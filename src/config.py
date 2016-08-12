@@ -2,7 +2,8 @@
 
 import logging
 
-from config import LOG_PATH
+LOG_PATH = '/tmp/pyflume/run.log'
+PICKLE_PATH = '/tmp/pyflume/pickles'
 
 formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(filename)s- %(lineno)d - %(message)s')
 fh = logging.FileHandler(LOG_PATH)
@@ -13,8 +14,6 @@ Lg = logging.getLogger('PyFlume')
 Lg.setLevel(logging.WARNING)
 Lg.addHandler(fh)
 
-LOG_PATH = '/tmp/pyflume/run.log'
-PICKLE_PATH = '/tmp/pyflume/pickles'
 
 MAX_READ_LINE = 30
 POOL_PATH = '/tmp/logs'
