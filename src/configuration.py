@@ -10,7 +10,7 @@ class Configuration(object):
     def __init__(self, path='default'):
         self.log_path = './run.log'
         self.pickle_path = './.pickles'
-        self.max_read_line = 10
+        self.max_read_line = 30
         self.pool_path = ''
         self._log_level = logging.WARNING
         self._read_config(path)
@@ -19,7 +19,7 @@ class Configuration(object):
         if 'default' == path:
             self.log_path = './run.log'
             self.pickle_path = './.pickles'
-            self.max_read_line = 10
+            self.max_read_line = 30
             self.pool_path = ''
             self._log_level = logging.WARNING
         else:

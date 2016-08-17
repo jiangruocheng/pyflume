@@ -33,5 +33,6 @@ if __name__ == '__main__':
 
     _config.set_app_log_config()
 
-    while True:
-        Pyflume(_config).run()
+    pyflume = Pyflume(_config)
+    pyflume.run()
+
