@@ -1,6 +1,7 @@
 #! -*- coding:utf-8 -*-
 
 import os
+import select
 import pickle
 import traceback
 import configuration as conf
@@ -46,9 +47,9 @@ class Pyflume(object):
         handler.seek(_offset)
         _data = handler.readlines(self._max_read_line)
         if _data:
-            yield _data
+            return _data
         else:
-            yield None
+            return None
 
     @staticmethod
     def get_handlers(conf):
@@ -67,30 +68,34 @@ class Pyflume(object):
         return _handlers
     
     def run(self):
-        _count = 0
-        _sleep_time = self._time_seed
+
         while True:
             self._handlers = self.get_handlers(self._config)
-            _threshold_value = len(self._handlers)
             self._load_pickle()
+            kq = select.kqueue()
+            _monitor_list = list()
+            _monitor_dict = dict()
             for _handler in self._handlers:
-                # 现阶段防止CPU占用率过高,故在此休眠一段时间
-                if _count == _threshold_value:
-                    sleep(_sleep_time)
-                    _count = 0
-                    if _sleep_time < 33:
-                        _sleep_time *= 2
-                for _data in self._get_log_data_by_handler(_handler):
-                    if not _data:
-                        _count += 1
-                        break
-                    _sleep_time = self._time_seed
-                    _result_flag = Collector().process_data(_handler, _data)
-                    if _result_flag:
-                        # 数据已成功采集,更新offset
-                        self._pickle_data[_handler.name] = _handler.tell()
+                _monitor_list.append(
+                    select.kevent(_handler.fileno(), filter=select.KQ_FILTER_READ, flags=select.KQ_EV_ADD)
+                )
+                _monitor_dict[_handler.fileno()] = _handler
 
-            # 从文件读取_pickle_data时offset已经改变,现在重置到0
-            self.pickle_handler.seek(0)
-            pickle.dump(self._pickle_data, self.pickle_handler)
+            # 此时另一个线程负责监控文件的变动,例如新文件的移入,另一个线程会发送信号终止这个循环,重新遍历获取所有文件的句柄.
+            while True:
+                revents = kq.control(_monitor_list, 2)
+                for event in revents:
+                    if event.filter == select.KQ_FILTER_READ:
+                        _in_process_file_handler = _monitor_dict[event.ident]
+                        _data = self._get_log_data_by_handler(_in_process_file_handler)
+                        if not _data:
+                            continue
+                        _result_flag = Collector().process_data(_in_process_file_handler, _data)
+                        if _result_flag:
+                            # 数据已成功采集,更新offset
+                            self._pickle_data[_in_process_file_handler.name] = _in_process_file_handler.tell()
+                            # 从文件读取_pickle_data时offset已经改变,现在重置到0
+                            self.pickle_handler.seek(0)
+                            pickle.dump(self._pickle_data, self.pickle_handler)
+
             self.pickle_handler.close()
