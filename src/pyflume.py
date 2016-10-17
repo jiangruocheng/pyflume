@@ -17,86 +17,95 @@ from select import KQ_FILTER_SIGNAL, KQ_FILTER_READ, KQ_EV_ADD
 class Pyflume(object):
 
     def __init__(self, config):
-        self._pickle_file = config.get('TEMP', 'PICKLE_FILE')
-        self._max_read_line = int(config.get('POOL', 'MAX_READ_LINE'))
+        self.pickle_File = config.get('TEMP', 'PICKLE_FILE')
+        self.max_read_line = int(config.get('POOL', 'MAX_READ_LINE'))
         self.pickle_handler = None
-        self._pickle_data = None
-        self._handlers = list()
-        self._pool_path = config.get('POOL', 'POOL_PATH')
+        self.pickle_data = None
+        self.handlers = list()
+        self.pool_path = config.get('POOL', 'POOL_PATH')
         self.logger = logging.getLogger(config.get('LOG', 'LOG_HANDLER'))
+        self.pid = os.getpid()
 
     def _load_pickle(self):
-        if not os.path.exists(self._pickle_file):
+        if not os.path.exists(self.pickle_File):
             try:
-                self.pickle_handler = open(self._pickle_file, 'w+')
+                self.pickle_handler = open(self.pickle_File, 'w+')
             except IOError:
                 self.logger.error(traceback.format_exc())
                 exit(-1)
 
-        self.pickle_handler = open(self._pickle_file, 'r+')
+        self.pickle_handler = open(self.pickle_File, 'r+')
         try:
-            self._pickle_data = pickle.load(self.pickle_handler)
+            self.pickle_data = pickle.load(self.pickle_handler)
         except EOFError:
             self.logger.warning('No pickle data exits.')
-            self._pickle_data = dict()
+            self.pickle_data = dict()
 
     def _get_log_data_by_handler(self, handler):
         # 先获取文件上次读取的偏移量
         _file_name = handler.name
         try:
-            _offset = self._pickle_data[_file_name]
+            _offset = self.pickle_data[_file_name]
         except KeyError:
             self.logger.warning('Cant find "%s" in pickles.' % _file_name)
             _offset = 0
         handler.seek(_offset)
-        _data = handler.readlines(self._max_read_line)
+        _data = handler.readlines(self.max_read_line)
         if _data:
             return _data
         else:
             return None
 
     def get_handlers(self):
-        _handlers = list()
-        _files = os.listdir(self._pool_path)
+        handlers = list()
+        _files = os.listdir(self.pool_path)
         for _file in _files:
             if 'COMPLETED' != _file.split('.')[-1]:
-                if os.path.isfile(self._pool_path + _file):
+                if os.path.isfile(self.pool_path + _file):
                     try:
-                        _handler = open(self._pool_path + _file, 'r')
-                        _handlers.append(_handler)
+                        _handler = open(self.pool_path + _file, 'r')
+                        handlers.append(_handler)
                     except IOError:
                         self.logger.error(traceback.format_exc())
                         return []
 
-        return _handlers
+        return handlers
     
     def run(self):
 
-        # _thread_move = threading.Thread(target=self.monitor_file_move, name='monitor_file_move')
+        _thread_move = threading.Thread(target=self.monitor_file_move, name='monitor_file_move')
         _thread_content = threading.Thread(target=self.monitor_file_content, name='monitor_file_content')
 
-        # _thread_move.start()
+        _thread_move.start()
         _thread_content.start()
 
+        _thread_move.join()
         _thread_content.join()
-        # _thread_move.join()
 
     def monitor_file_move(self):
+        sleep(10)
+
+        before_directories = set()
+        after_directories = set()
 
         while True:
+            after_directories = set(os.listdir(self.pool_path))
+            if after_directories ^ before_directories:
+                os.kill(self.pid, signal.SIGUSR1)
+                before_directories = after_directories
+
             sleep(10)
-            break
 
     def monitor_file_content(self):
 
-        while 1:
+        while True:
             break_flag = True
-            self._handlers = self.get_handlers()
+            self.handlers = self.get_handlers()
             self._load_pickle()
             kq = select.kqueue()
             _monitor_list = list()
             _monitor_dict = dict()
-            for _handler in self._handlers:
+            for _handler in self.handlers:
                 _monitor_list.append(
                     select.kevent(_handler.fileno(), filter=KQ_FILTER_READ, flags=KQ_EV_ADD)
                 )
@@ -117,10 +126,10 @@ class Pyflume(object):
                             _result_flag = Collector().process_data(_in_process_file_handler, _data)
                             if _result_flag:
                                 # 数据已成功采集,更新offset
-                                self._pickle_data[_in_process_file_handler.name] = _in_process_file_handler.tell()
-                                # 从文件读取_pickle_data时offset已经改变,现在重置到0
+                                self.pickle_data[_in_process_file_handler.name] = _in_process_file_handler.tell()
+                                # 从文件读取pickle_data时offset已经改变,现在重置到0
                                 self.pickle_handler.seek(0)
-                                pickle.dump(self._pickle_data, self.pickle_handler)
+                                pickle.dump(self.pickle_data, self.pickle_handler)
                         elif event.filter == select.KQ_FILTER_SIGNAL:
                             if event.ident == signal.SIGUSR1:
                                 self.logger.info('捕捉到信号SIGUSR1,重新获取文件句柄')
