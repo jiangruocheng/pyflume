@@ -11,7 +11,7 @@ import traceback
 from time import sleep
 from select import KQ_FILTER_SIGNAL, KQ_FILTER_READ, KQ_EV_ADD
 
-from collector import Collector
+from collector import KafkaCollector
 from wrappers import pickle_lock
 
 
@@ -26,6 +26,7 @@ class Pyflume(object):
         self.pool_path = config.get('POOL', 'POOL_PATH')
         self.logger = logging.getLogger(config.get('LOG', 'LOG_HANDLER'))
         self.pid = os.getpid()
+        self.collector = KafkaCollector(config)
 
     @pickle_lock
     def _load_pickle(self):
@@ -158,7 +159,7 @@ class Pyflume(object):
                             _data = self._get_log_data_by_handler(_in_process_file_handler)
                             if not _data:
                                 continue
-                            _result_flag = Collector().process_data(_in_process_file_handler, _data)
+                            _result_flag = self.collector.process_data(_in_process_file_handler.name, _data)
                             if _result_flag:
                                 self._update_pickle(_in_process_file_handler)
                         elif event.filter == select.KQ_FILTER_SIGNAL:
