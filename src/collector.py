@@ -6,6 +6,13 @@ from kafka import KafkaProducer
 from kafka.errors import KafkaError
 
 
+def get_collector(name=''):
+    if name.lower() == 'kafka':
+        return KafkaCollector
+    else:
+        return Collector
+
+
 class Collector(object):
 
     def __init__(self, config=None):
@@ -13,6 +20,11 @@ class Collector(object):
 
     def process_data(self, *args, **kwargs):
         """This function should be implemented by sub-class."""
+        file_name = kwargs['file_name']
+        data = kwargs['data']
+        for line in data:
+            _data = file_name + ': ' + str(line)
+            self.log.info(_data)
         return True
 
 

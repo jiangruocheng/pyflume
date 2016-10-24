@@ -3,6 +3,7 @@
 import os
 import sys
 import signal
+import socket
 import logging
 import argparse
 import configparser
@@ -18,7 +19,9 @@ if _basedir not in sys.path:
 
 if __name__ == '__main__':
 
+    # 注册信号
     signal.signal(signal.SIGUSR1, lambda: 0)
+
     parser = argparse.ArgumentParser()
     parser.add_argument('-c', '--configure', help='给定配置文件路径,导入配置')
     args = parser.parse_args()
@@ -30,7 +33,6 @@ if __name__ == '__main__':
         else:
             print 'No configure file exists.'
     else:
-        # 使用默认配置
         print 'please import configure file.'
         exit()
 

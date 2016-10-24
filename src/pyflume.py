@@ -11,22 +11,25 @@ import traceback
 from time import sleep
 from select import KQ_FILTER_SIGNAL, KQ_FILTER_READ, KQ_EV_ADD
 
-from collector import KafkaCollector
+from collector import get_collector
 from wrappers import pickle_lock
 
 
 class Pyflume(object):
 
     def __init__(self, config):
+        self.logger = logging.getLogger(config.get('LOG', 'LOG_HANDLER'))
         self.pickle_File = config.get('TEMP', 'PICKLE_FILE')
         self.max_read_line = int(config.get('POOL', 'MAX_READ_LINE'))
+        self.pool_path = config.get('POOL', 'POOL_PATH')
+        self.collector = get_collector(config.get('OUTPUT', 'TYPE'))(config)
+        self.host = config.get('SOCKET', 'HOST')
+        self.port = config.get('SOCKET', 'PORT')
         self.pickle_handler = None
         self.pickle_data = None
         self.handlers = list()
-        self.pool_path = config.get('POOL', 'POOL_PATH')
-        self.logger = logging.getLogger(config.get('LOG', 'LOG_HANDLER'))
         self.pid = os.getpid()
-        self.collector = KafkaCollector(config)
+        self.exit_flag = False
 
     @pickle_lock
     def _load_pickle(self):
@@ -107,16 +110,12 @@ class Pyflume(object):
         _thread_move.start()
         _thread_content.start()
 
-        _thread_move.join()
-        _thread_content.join()
-
     def monitor_file_move(self):
-        sleep(10)
+        sleep(3)
 
         before_directories = set()
-        after_directories = set()
 
-        while True:
+        while not self.exit_flag:
             try:
                 after_directories = set(os.listdir(self.pool_path))
                 xor_set = after_directories ^ before_directories
@@ -134,7 +133,7 @@ class Pyflume(object):
 
     def monitor_file_content(self):
 
-        while True:
+        while not self.exit_flag:
             try:
                 break_flag = True
                 self.handlers = self.get_handlers()
@@ -159,7 +158,9 @@ class Pyflume(object):
                             _data = self._get_log_data_by_handler(_in_process_file_handler)
                             if not _data:
                                 continue
-                            _result_flag = self.collector.process_data(_in_process_file_handler.name, _data)
+                            _result_flag = self.collector.process_data(
+                                file_name=_in_process_file_handler.name,
+                                data=_data)
                             if _result_flag:
                                 self._update_pickle(_in_process_file_handler)
                         elif event.filter == select.KQ_FILTER_SIGNAL:
