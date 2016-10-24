@@ -3,6 +3,7 @@
 import os
 import select
 import pickle
+import socket
 import signal
 import logging
 import threading
@@ -10,7 +11,6 @@ import traceback
 
 from time import sleep
 from select import KQ_FILTER_SIGNAL, KQ_FILTER_READ, KQ_EV_ADD
-
 from collector import get_collector
 from wrappers import pickle_lock
 
@@ -24,7 +24,7 @@ class Pyflume(object):
         self.pool_path = config.get('POOL', 'POOL_PATH')
         self.collector = get_collector(config.get('OUTPUT', 'TYPE'))(config)
         self.host = config.get('SOCKET', 'HOST')
-        self.port = config.get('SOCKET', 'PORT')
+        self.port = int(config.get('SOCKET', 'PORT'))
         self.pickle_handler = None
         self.pickle_data = None
         self.handlers = list()
@@ -101,24 +101,48 @@ class Pyflume(object):
                         return []
 
         return handlers
-    
+
     def run(self):
 
         _thread_move = threading.Thread(target=self.monitor_file_move, name='monitor_file_move')
         _thread_content = threading.Thread(target=self.monitor_file_content, name='monitor_file_content')
 
+        _thread_move.setDaemon(True)
+        _thread_content.setDaemon(True)
+
         _thread_move.start()
         _thread_content.start()
 
-    def monitor_file_move(self):
-        sleep(3)
+        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        s.bind((self.host, self.port))
+        s.listen(1)
+        while not self.exit_flag:
+            try:
+                (conn, addr) = s.accept()
+            except socket.error:
+                continue
+            self.logger.debug('Connected by: ' + str(addr))
+            data = conn.recv(1024)
+            if 'stop' == data:
+                self.exit_flag = True
+                os.kill(self.pid, signal.SIGKILL)  # 使monitor_file_content退出内层循环
+                self.logger.info('Pylume is going down.')
+                conn.close()
+                s.close()
 
+    def monitor_file_move(self):
+        _is_first_time = True
         before_directories = set()
 
         while not self.exit_flag:
             try:
                 after_directories = set(os.listdir(self.pool_path))
                 xor_set = after_directories ^ before_directories
+                if _is_first_time:
+                    # 加入此判断是为防止pyflume启动时，pickle不为空导致数据重复导入
+                    before_directories = after_directories
+                    _is_first_time = False
+                    continue
                 if xor_set:
                     self._reset_pickle(list(xor_set))
                     os.kill(self.pid, signal.SIGUSR1)
@@ -165,7 +189,7 @@ class Pyflume(object):
                                 self._update_pickle(_in_process_file_handler)
                         elif event.filter == select.KQ_FILTER_SIGNAL:
                             if event.ident == signal.SIGUSR1:
-                                self.logger.info(u'捕捉到信号SIGUSR1,重新获取文件句柄')
+                                self.logger.info(u'捕捉到信号SIGUSR1')
                                 break_flag = False
             except Exception:
                 self.logger.error(traceback.format_exc())

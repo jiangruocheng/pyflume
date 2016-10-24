@@ -2,8 +2,8 @@
 
 import os
 import sys
-import signal
 import socket
+import signal
 import logging
 import argparse
 import configparser
@@ -20,10 +20,13 @@ if _basedir not in sys.path:
 if __name__ == '__main__':
 
     # 注册信号
-    signal.signal(signal.SIGUSR1, lambda: 0)
+    def func(*args, **kwargs):
+        pass
+    signal.signal(signal.SIGUSR1, func)
 
     parser = argparse.ArgumentParser()
     parser.add_argument('-c', '--configure', help='给定配置文件路径,导入配置')
+    parser.add_argument('-s', '--system', help='启动(start)/退出(stop)')
     args = parser.parse_args()
     if args.configure:
         if os.path.exists(args.configure):
@@ -45,6 +48,15 @@ if __name__ == '__main__':
     logger.setLevel(level)
     logger.addHandler(handler)
 
-    pyflume = Pyflume(config)
-    pyflume.run()
-
+    if 'start' == args.system.lower():
+        logger.info('Pyflume start.')
+        pyflume = Pyflume(config)
+        pyflume.run()
+    elif 'stop' == args.system.lower():
+        host = config.get('SOCKET', 'HOST')
+        port = int(config.get('SOCKET', 'PORT'))
+        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        s.connect((host, port))
+        s.send('stop')
+        logger.info('Pyflume stop.')
+        s.close()
