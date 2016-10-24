@@ -49,7 +49,6 @@ if __name__ == '__main__':
     logger.addHandler(handler)
 
     if 'start' == args.system.lower():
-        logger.info('Pyflume start.')
         pyflume = Pyflume(config)
         pyflume.run()
     elif 'stop' == args.system.lower():
@@ -58,5 +57,4 @@ if __name__ == '__main__':
         s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         s.connect((host, port))
         s.send('stop')
-        logger.info('Pyflume stop.')
         s.close()

@@ -103,12 +103,10 @@ class Pyflume(object):
         return handlers
 
     def run(self):
+        self.logger.info('Pyflume start.')
 
         _thread_move = threading.Thread(target=self.monitor_file_move, name='monitor_file_move')
         _thread_content = threading.Thread(target=self.monitor_file_content, name='monitor_file_content')
-
-        _thread_move.setDaemon(True)
-        _thread_content.setDaemon(True)
 
         _thread_move.start()
         _thread_content.start()
@@ -125,10 +123,13 @@ class Pyflume(object):
             data = conn.recv(1024)
             if 'stop' == data:
                 self.exit_flag = True
-                os.kill(self.pid, signal.SIGKILL)  # 使monitor_file_content退出内层循环
-                self.logger.info('Pylume is going down.')
+                os.kill(self.pid, signal.SIGUSR1)  # 使monitor_file_content退出内层循环
                 conn.close()
                 s.close()
+
+        _thread_move.join()
+        _thread_content.join()
+        self.logger.info('Pylume stop.')
 
     def monitor_file_move(self):
         _is_first_time = True
