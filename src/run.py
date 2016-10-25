@@ -43,7 +43,7 @@ if __name__ == '__main__':
     handler = TimedRotatingFileHandler(log_path, "midnight", 1)
     formatter = '%(asctime)s - %(filename)s:%(lineno)s - %(name)s - %(message)s'
     handler.setFormatter(logging.Formatter(formatter))
-    level = logging.DEBUG
+    level = logging.DEBUG if config.get('LOG', 'DEBUG') == 'True' else logging.ERROR
     logger = logging.getLogger(config.get('LOG', 'LOG_HANDLER'))
     logger.setLevel(level)
     logger.addHandler(handler)

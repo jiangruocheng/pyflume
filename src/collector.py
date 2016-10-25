@@ -25,6 +25,7 @@ class Collector(object):
         for line in data:
             _data = file_name + ': ' + str(line)
             self.log.info(_data)
+            print _data
         return True
 
 
