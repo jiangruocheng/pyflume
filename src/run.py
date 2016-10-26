@@ -2,7 +2,6 @@
 
 import os
 import sys
-import socket
 import signal
 import logging
 import argparse
@@ -26,7 +25,6 @@ if __name__ == '__main__':
 
     parser = argparse.ArgumentParser()
     parser.add_argument('-c', '--configure', help='给定配置文件路径,导入配置')
-    parser.add_argument('-s', '--system', help='启动(start)/退出(stop)')
     args = parser.parse_args()
     if args.configure:
         if os.path.exists(args.configure):
@@ -48,13 +46,5 @@ if __name__ == '__main__':
     logger.setLevel(level)
     logger.addHandler(handler)
 
-    if 'start' == args.system.lower():
-        pyflume = Pyflume(config)
-        pyflume.run()
-    elif 'stop' == args.system.lower():
-        host = config.get('SOCKET', 'HOST')
-        port = int(config.get('SOCKET', 'PORT'))
-        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        s.connect((host, port))
-        s.send('stop')
-        s.close()
+    pyflume = Pyflume(config)
+    pyflume.run()

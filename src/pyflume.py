@@ -3,7 +3,6 @@
 import os
 import select
 import pickle
-import socket
 import signal
 import logging
 import threading
@@ -30,6 +29,13 @@ class Pyflume(object):
         self.handlers = list()
         self.pid = os.getpid()
         self.exit_flag = False
+
+        def _exit(*args, **kwargs):
+            self.logger.info('Received sigterm, pyflume is going down.')
+            self.exit_flag = True
+            os.kill(self.pid, signal.SIGUSR1)
+
+        signal.signal(signal.SIGTERM, _exit)
 
     @pickle_lock
     def _load_pickle(self):
@@ -111,21 +117,7 @@ class Pyflume(object):
         _thread_move.start()
         _thread_content.start()
 
-        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        s.bind((self.host, self.port))
-        s.listen(1)
-        while not self.exit_flag:
-            try:
-                (conn, addr) = s.accept()
-            except socket.error:
-                continue
-            self.logger.debug('Connected by: ' + str(addr))
-            data = conn.recv(1024)
-            if 'stop' == data:
-                self.exit_flag = True
-                os.kill(self.pid, signal.SIGUSR1)  # 使monitor_file_content退出内层循环
-                conn.close()
-                s.close()
+        signal.pause()  # 阻塞这里，等待信号
 
         _thread_move.join()
         _thread_content.join()
