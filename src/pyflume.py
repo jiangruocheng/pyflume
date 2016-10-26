@@ -22,8 +22,6 @@ class Pyflume(object):
         self.max_read_line = int(config.get('POOL', 'MAX_READ_LINE'))
         self.pool_path = config.get('POOL', 'POOL_PATH')
         self.collector = get_collector(config.get('OUTPUT', 'TYPE'))(config)
-        self.host = config.get('SOCKET', 'HOST')
-        self.port = int(config.get('SOCKET', 'PORT'))
         self.pickle_handler = None
         self.pickle_data = None
         self.handlers = list()
