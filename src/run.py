@@ -18,7 +18,7 @@ if _basedir not in sys.path:
 
 if __name__ == '__main__':
 
-    # 注册信号
+    # 注册信号, 阻止进程接收到SIGUSR1后直接退出
     def func(*args, **kwargs):
         pass
     signal.signal(signal.SIGUSR1, func)
