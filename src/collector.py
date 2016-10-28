@@ -23,7 +23,7 @@ class Collector(object):
         file_name = kwargs['file_name']
         data = kwargs['data']
         for line in data:
-            _data = file_name + ': ' + str(line)
+            _data = file_name + ': ' + line.decode('utf-8')
             self.log.info(_data)
             print _data
         return True
