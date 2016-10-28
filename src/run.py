@@ -5,11 +5,12 @@ import sys
 import signal
 import logging
 import argparse
+import platform
 import configparser
 
 from logging.handlers import TimedRotatingFileHandler
 
-from pyflume import Pyflume
+from pyflume import InotifyPyflume, KqueuePyflume
 
 # 将当前路径添加到系统路径中
 _basedir = os.path.abspath(os.path.dirname(__file__))
@@ -46,5 +47,8 @@ if __name__ == '__main__':
     logger.setLevel(level)
     logger.addHandler(handler)
 
-    pyflume = Pyflume(config)
+    if platform.system() == 'Linux':
+        pyflume = InotifyPyflume(config)
+    else:
+        pyflume = KqueuePyflume(config)
     pyflume.run()
