@@ -109,12 +109,13 @@ class Pyflume(object):
 class KqueuePyflume(Pyflume):
 
     def __init__(self, config):
-        super(Pyflume, self).__init__(config)
+        super(KqueuePyflume, self).__init__(config)
 
         def _exit(*args, **kwargs):
             self.logger.info('Received sigterm, pyflume is going down.')
             self.exit_flag = True
             os.kill(self.pid, signal.SIGUSR1)
+            self.collector.put_data() # 终止collector线程
 
         signal.signal(signal.SIGTERM, _exit)
 
@@ -186,11 +187,10 @@ class KqueuePyflume(Pyflume):
                             _data = self._get_log_data_by_handler(_in_process_file_handler)
                             if not _data:
                                 continue
-                            _result_flag = self.collector.process_data(
-                                file_name=_in_process_file_handler.name,
+                            self.collector.put_data(
+                                call_back_function=self._update_pickle,
+                                file_handler=_in_process_file_handler,
                                 data=_data)
-                            if _result_flag:
-                                self._update_pickle(_in_process_file_handler)
                         elif event.filter == select.KQ_FILTER_SIGNAL:
                             if event.ident == signal.SIGUSR1:
                                 self.logger.info(u'捕捉到信号SIGUSR1')
