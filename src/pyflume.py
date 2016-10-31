@@ -194,6 +194,9 @@ class KqueuePyflume(Pyflume):
                         elif event.filter == select.KQ_FILTER_SIGNAL:
                             if event.ident == signal.SIGUSR1:
                                 self.logger.info(u'捕捉到信号SIGUSR1')
+                                # 关闭文件句柄，避免过量问题
+                                for _handler in self.handlers:
+                                    _handler.close()
                                 break_flag = False
             except Exception:
                 self.logger.error(traceback.format_exc())
