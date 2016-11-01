@@ -188,9 +188,10 @@ class KqueuePyflume(Pyflume):
                             if not _data:
                                 continue
                             self.collector.put_data(
-                                call_back_function=self._update_pickle,
                                 file_handler=_in_process_file_handler,
                                 data=_data)
+                            # 数据完整性由collector来保证
+                            self._update_pickle(_in_process_file_handler)
                         elif event.filter == select.KQ_FILTER_SIGNAL:
                             if event.ident == signal.SIGUSR1:
                                 self.logger.info(u'捕捉到信号SIGUSR1')

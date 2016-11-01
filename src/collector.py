@@ -1,5 +1,6 @@
 #! -*- coding:utf-8 -*-
 
+import sys
 import Queue
 import logging
 import threading
@@ -27,13 +28,12 @@ class Collector(object):
     def put_data(self, *args, **kwargs):
         """This function should be implemented by sub-class."""
         try:
-            call_back_funtcion = kwargs['call_back_function']
-            file_handler = kwargs['file_handler']
+            file_name = kwargs['file_name']
             data = kwargs['data']
         except:
             self.queue.put('stop')
         else:
-            self.queue.put((call_back_funtcion, file_handler, data))
+            self.queue.put((file_name, data))
 
     def process_data(self):
 
@@ -41,15 +41,15 @@ class Collector(object):
             result = self.queue.get()
             if 'stop' == result:
                 break
-            elif isinstance(result, tuple) and 3 == len(result):
-                func, file_handler, data = result
+            elif isinstance(result, tuple) and 2 == len(result):
+                file_name, data = result
             else:
                 continue
             for line in data:
-                _data = file_handler.name + ': ' + line.decode('utf-8')
+                _data = file_name + ': ' + line.decode('utf-8')
                 self.log.info(_data)
-                print _data
-            func(file_handler)
+                sys.stdout.write(_data)
+                sys.stdin.flush()
 
 
 class KafkaCollector(Collector):
