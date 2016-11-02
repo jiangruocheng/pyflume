@@ -5,12 +5,11 @@ import sys
 import signal
 import logging
 import argparse
-import platform
 import configparser
 
 from logging.handlers import TimedRotatingFileHandler
 
-from pyflume import InotifyPyflume, KqueuePyflume
+from pyflume import Pyflume
 
 # 将当前路径添加到系统路径中
 _basedir = os.path.abspath(os.path.dirname(__file__))
@@ -34,6 +33,7 @@ if __name__ == '__main__':
             config.read(args.configure)
         else:
             print 'No configure file exists.'
+            exit()
     else:
         print 'please import configure file.'
         exit()
@@ -47,8 +47,5 @@ if __name__ == '__main__':
     logger.setLevel(level)
     logger.addHandler(handler)
 
-    if platform.system() == 'Linux':
-        pyflume = InotifyPyflume(config)
-    else:
-        pyflume = KqueuePyflume(config)
+    pyflume = Pyflume(config)
     pyflume.run()

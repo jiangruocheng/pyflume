@@ -1,55 +1,43 @@
 #! -*- coding:utf-8 -*-
 
+import os
 import sys
-import Queue
+import signal
 import logging
-import threading
 
 from kafka import KafkaProducer
 from kafka.errors import KafkaError
-
-
-def get_collector(name=''):
-    if name.lower() == 'kafka':
-        return KafkaCollector
-    else:
-        return Collector
 
 
 class Collector(object):
 
     def __init__(self, config=None):
         self.log = logging.getLogger(config.get('LOG', 'LOG_HANDLER'))
-        self.queue = Queue.Queue()
-
-        self.get_data = threading.Thread(target=self.process_data, name='collector')
-        self.get_data.start()
-
-    def put_data(self, *args, **kwargs):
-        """This function should be implemented by sub-class."""
-        try:
-            file_name = kwargs['file_name']
-            data = kwargs['data']
-        except:
-            self.queue.put('stop')
-        else:
-            self.queue.put((file_name, data))
+        self.channel = None
+        self.exit_flag = False
 
     def process_data(self):
 
-        while True:
-            result = self.queue.get()
-            if 'stop' == result:
-                break
-            elif isinstance(result, tuple) and 2 == len(result):
-                file_name, data = result
-            else:
-                continue
-            for line in data:
-                _data = file_name + ': ' + line.decode('utf-8')
-                self.log.info(_data)
-                sys.stdout.write(_data)
-                sys.stdin.flush()
+        while not self.exit_flag:
+            chn = self.channel()
+            _data = chn.get()
+            sys.stdout.write(_data)
+            sys.stdout.flush()
+
+    def run(self, channel=None):
+
+        def _exit(*args, **kwargs):
+            self.log.info('Received sigterm, collector is going down.')
+            self.exit_flag = True
+            # 解除阻塞
+            self.channel().put('stop')
+
+        signal.signal(signal.SIGTERM, _exit)
+
+        self.log.info('Pyflume collector starts.')
+        self.channel = channel
+        self.process_data()
+        self.log.info('Pyflume collector ends.')
 
 
 class KafkaCollector(Collector):
