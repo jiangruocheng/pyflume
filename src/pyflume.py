@@ -7,7 +7,7 @@ import logging
 from multiprocessing import Process, Queue
 
 from agent import Agent
-from collector import Collector
+from collector import CollectorProxy
 
 
 class Pyflume(object):
@@ -16,7 +16,7 @@ class Pyflume(object):
         self.log = logging.getLogger(config.get('LOG', 'LOG_HANDLER'))
         self.queue = Queue()
         self.agent = Agent(config)
-        self.collector = Collector(config)
+        self.collector = CollectorProxy(config)
         self.agent_pid = None
         self.collector_pid = None
 

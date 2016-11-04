@@ -9,6 +9,7 @@ import threading
 import traceback
 import os
 import re
+import json
 from time import sleep
 from errno import EINTR
 
@@ -28,6 +29,7 @@ class AgentBase(object):
         self.pickle_File = config.get('TEMP', 'PICKLE_FILE')
         self.pool_path = config.get('POOL', 'POOL_PATH')
         self.filename_pattern = re.compile(config.get('POOL', 'FILENAME_PATTERN'))
+        self.collector_name = config.get('POOL', 'COLLECTOR')
         self.pickle_handler = None
         self.pickle_data = None
         self.handlers = list()
@@ -111,6 +113,13 @@ class AgentBase(object):
             return True
         return False
 
+    def msg_join(self, filename, data):
+        msg = dict()
+        msg['collector'] = self.collector_name
+        msg['filename'] = filename
+        msg['data'] = data
+        return msg
+
 
 class KqueueAgent(AgentBase):
 
@@ -185,7 +194,7 @@ class KqueueAgent(AgentBase):
                             else:
                                 chn = self.channel()
                                 for _line in _data:
-                                    chn.put('[header-example] '+_line)
+                                    chn.put(self.msg_join(filename=_in_process_file_handler.name, data=_line))
                             # 数据完整性由collector来保证
                             self._update_pickle(_in_process_file_handler)
                         elif event.filter == select.KQ_FILTER_SIGNAL:
@@ -204,6 +213,7 @@ class KqueueAgent(AgentBase):
 
 
 class InotifyAgent(AgentBase):
+
     def __init__(self, config):
         super(InotifyAgent, self).__init__(config)
         self.__monitor_dict = dict()
@@ -227,7 +237,7 @@ class InotifyAgent(AgentBase):
                         break
                     chn = self.channel()
                     for _line in _data:
-                        chn.put('[header-example] ' + _line)
+                        chn.put(self.msg_join(filename=_in_process_file_handler.name, data=_line))
                         # 数据完整性由collector来保证
                     self._update_pickle(_in_process_file_handler)
 
@@ -266,7 +276,7 @@ class InotifyAgent(AgentBase):
                 if _data:
                     chn = self.channel()
                     for _line in _data:
-                        chn.put('[header-example] ' + _line)
+                        chn.put(self.msg_join(filename=_in_process_file_handler.name, data=_line))
                         # 数据完整性由collector来保证
                     self._update_pickle(_in_process_file_handler)
         elif mask & IN_DELETE or mask & IN_MOVED_FROM:
