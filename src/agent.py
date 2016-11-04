@@ -8,6 +8,7 @@ import signal
 import threading
 import traceback
 import os
+import re
 from time import sleep
 from errno import EINTR
 
@@ -26,6 +27,7 @@ class AgentBase(object):
         self.logger = logging.getLogger(config.get('LOG', 'LOG_HANDLER'))
         self.pickle_File = config.get('TEMP', 'PICKLE_FILE')
         self.pool_path = config.get('POOL', 'POOL_PATH')
+        self.filename_pattern = re.compile(config.get('POOL', 'FILENAME_PATTERN'))
         self.pickle_handler = None
         self.pickle_data = None
         self.handlers = list()
@@ -93,7 +95,7 @@ class AgentBase(object):
         handlers = list()
         _files = os.listdir(self.pool_path)
         for _file in _files:
-            if 'COMPLETED' != _file.split('.')[-1]:
+            if self.is_need_monitor(_file):
                 if os.path.isfile(os.path.join(self.pool_path, _file)):
                     try:
                         _handler = open(os.path.join(self.pool_path, _file), 'r')
@@ -103,6 +105,11 @@ class AgentBase(object):
                         return []
 
         return handlers
+
+    def is_need_monitor(self, filename):
+        if self.filename_pattern.match(filename):
+            return True
+        return False
 
 
 class KqueueAgent(AgentBase):
@@ -245,27 +252,30 @@ class InotifyAgent(AgentBase):
     def process_event(self, inotify_event):
         (watch_path, mask, cookie, filename) = inotify_event
         if mask & IN_CREATE or mask & IN_MOVED_TO:
-            full_filename = os.path.join(watch_path, filename)
-            if os.path.isfile(full_filename):
-                _new_file_handler = open(full_filename, 'r')
-                self.__monitor_dict[full_filename] = _new_file_handler
-                self.handlers.append(_new_file_handler)
-                self._update_pickle(_new_file_handler)
+            if self.is_need_monitor(filename):
+                full_filename = os.path.join(watch_path, filename)
+                if os.path.isfile(full_filename):
+                    _new_file_handler = open(full_filename, 'r')
+                    self.__monitor_dict[full_filename] = _new_file_handler
+                    self.handlers.append(_new_file_handler)
+                    self._update_pickle(_new_file_handler)
         elif mask & IN_MODIFY:
-            _in_process_file_handler = self.__monitor_dict[os.path.join(watch_path, filename)]
-            _data = self._get_log_data_by_handler(_in_process_file_handler)
-            if _data:
-                chn = self.channel()
-                for _line in _data:
-                    chn.put('[header-example] ' + _line)
-                    # 数据完整性由collector来保证
-                self._update_pickle(_in_process_file_handler)
+            _in_process_file_handler = self.__monitor_dict.get(os.path.join(watch_path, filename))
+            if _in_process_file_handler:
+                _data = self._get_log_data_by_handler(_in_process_file_handler)
+                if _data:
+                    chn = self.channel()
+                    for _line in _data:
+                        chn.put('[header-example] ' + _line)
+                        # 数据完整性由collector来保证
+                    self._update_pickle(_in_process_file_handler)
         elif mask & IN_DELETE or mask & IN_MOVED_FROM:
-            _delete_file_handler = self.__monitor_dict[os.path.join(watch_path, filename)]
-            self.__monitor_dict.pop(os.path.join(watch_path, filename))
-            _delete_file_handler.close()
-            self.handlers.remove(_delete_file_handler)
-            self._reset_pickle([_delete_file_handler.name])
+            _delete_file_handler = self.__monitor_dict.get(os.path.join(watch_path, filename))
+            if _delete_file_handler:
+                self.__monitor_dict.pop(os.path.join(watch_path, filename))
+                _delete_file_handler.close()
+                self.handlers.remove(_delete_file_handler)
+                self._reset_pickle([_delete_file_handler.name])
 
 
 class Agent(InotifyAgent, KqueueAgent):
