@@ -1,20 +1,23 @@
 #! -*- coding:utf-8 -*-
 
-import os
-import select
-import pickle
-import signal
 import logging
+import pickle
+import platform
+import select
+import signal
 import threading
 import traceback
-import platform
-
+import os
+import re
+import json
 from time import sleep
+from errno import EINTR
+
 from wrappers import pickle_lock
 
 if platform.system() == 'Linux':
-    from inotify.adapters import Inotify
-    from inotify.constants import IN_CREATE, IN_MOVED_FROM, IN_MOVED_TO, IN_MODIFY, IN_DELETE
+    from inotify import Inotify
+    from inotify import IN_CREATE, IN_MOVED_FROM, IN_MOVED_TO, IN_MODIFY, IN_DELETE
 else:
     from select import KQ_FILTER_SIGNAL, KQ_FILTER_READ, KQ_EV_ADD
 
@@ -25,6 +28,8 @@ class AgentBase(object):
         self.logger = logging.getLogger(config.get('LOG', 'LOG_HANDLER'))
         self.pickle_File = config.get('TEMP', 'PICKLE_FILE')
         self.pool_path = config.get('POOL', 'POOL_PATH')
+        self.filename_pattern = re.compile(config.get('POOL', 'FILENAME_PATTERN'))
+        self.collector_name = config.get('POOL', 'COLLECTOR')
         self.pickle_handler = None
         self.pickle_data = None
         self.handlers = list()
@@ -92,7 +97,7 @@ class AgentBase(object):
         handlers = list()
         _files = os.listdir(self.pool_path)
         for _file in _files:
-            if 'COMPLETED' != _file.split('.')[-1]:
+            if self.is_need_monitor(_file):
                 if os.path.isfile(os.path.join(self.pool_path, _file)):
                     try:
                         _handler = open(os.path.join(self.pool_path, _file), 'r')
@@ -102,6 +107,18 @@ class AgentBase(object):
                         return []
 
         return handlers
+
+    def is_need_monitor(self, filename):
+        if self.filename_pattern.match(filename):
+            return True
+        return False
+
+    def msg_join(self, filename, data):
+        msg = dict()
+        msg['collector'] = self.collector_name
+        msg['filename'] = filename
+        msg['data'] = data
+        return msg
 
 
 class KqueueAgent(AgentBase):
@@ -177,7 +194,7 @@ class KqueueAgent(AgentBase):
                             else:
                                 chn = self.channel()
                                 for _line in _data:
-                                    chn.put('[header-example] '+_line)
+                                    chn.put(self.msg_join(filename=_in_process_file_handler.name, data=_line))
                             # 数据完整性由collector来保证
                             self._update_pickle(_in_process_file_handler)
                         elif event.filter == select.KQ_FILTER_SIGNAL:
@@ -197,62 +214,78 @@ class KqueueAgent(AgentBase):
 
 class InotifyAgent(AgentBase):
 
+    def __init__(self, config):
+        super(InotifyAgent, self).__init__(config)
+        self.__monitor_dict = dict()
+
     def monitor_file_inotify(self):
         try:
             self.handlers = self.get_handlers()
             self._load_pickle()
-            inotify = Inotify(block_duration_s=-1)
-            inotify.add_watch(self.pool_path, IN_CREATE | IN_MOVED_FROM | IN_MOVED_TO \
-                              | IN_MODIFY | IN_DELETE)
-            _monitor_dict = dict()
+            _inotify = Inotify()
+            _inotify.add_watch(self.pool_path, IN_CREATE | IN_MOVED_FROM | IN_MOVED_TO |
+                               IN_MODIFY | IN_DELETE)
+            _epoll = select.epoll()
+            _epoll.register(_inotify.fileno(), select.EPOLLIN)
+
             for _in_process_file_handler in self.handlers:
-                _monitor_dict[_in_process_file_handler.name] = _in_process_file_handler
-                while True:
+                self.__monitor_dict[_in_process_file_handler.name] = _in_process_file_handler
+                file_size = os.path.getsize(_in_process_file_handler.name)
+                while _in_process_file_handler.tell() < file_size:
                     _data = self._get_log_data_by_handler(_in_process_file_handler)
                     if not _data:
                         break
-                    _result_flag = self.collector.process_data(
-                        file_name=_in_process_file_handler.name,
-                        data=_data)
-                    if _result_flag:
-                        self._update_pickle(_in_process_file_handler)
+                    chn = self.channel()
+                    for _line in _data:
+                        chn.put(self.msg_join(filename=_in_process_file_handler.name, data=_line))
+                        # 数据完整性由collector来保证
+                    self._update_pickle(_in_process_file_handler)
 
-            for event in inotify.event_gen():
-                if self.exit_flag:
-                    print self.exit_flag
-                    break
-                if event is not None:
-                    (header, type_names, watch_path, filename) = event
-                    if header.mask & IN_CREATE or header.mask & IN_MOVED_TO:
-                        full_filename = watch_path + filename
-                        if os.path.isfile(full_filename):
-                            _new_file_handler = open(full_filename, 'r')
-                            _monitor_dict[full_filename] = _new_file_handler
-                            self.handlers.append(_new_file_handler)
-                            self._update_pickle(_new_file_handler)
-                    elif header.mask & IN_MODIFY:
-                        _in_process_file_handler = _monitor_dict[watch_path + filename]
-                        while True:
-                            _data = self._get_log_data_by_handler(_in_process_file_handler)
-                            if not _data:
-                                break
-                            _result_flag = self.collector.process_data(
-                                file_name=_in_process_file_handler.name,
-                                data=_data)
-                            if _result_flag:
-                                self._update_pickle(_in_process_file_handler)
-                    elif header.mask & IN_DELETE or header.mask & IN_MOVED_FROM:
-                        _delete_file_handler = _monitor_dict[watch_path + filename]
-                        _monitor_dict.pop(watch_path + filename)
-                        _delete_file_handler.close()
-                        self.handlers.remove(_delete_file_handler)
-                        self._reset_pickle([_delete_file_handler.name])
+            while not self.exit_flag:
+                try:
+                    for fd, epoll_event in _epoll.poll(-1):
+                        if fd == _inotify.fileno():
+                            for inotify_event in _inotify.read_events():
+                                self.process_event(inotify_event)
+                                if self.exit_flag:
+                                    break
+                except IOError as e:
+                    if e.errno == EINTR:
+                        continue
+                    raise e
         except Exception:
             self.logger.error(traceback.format_exc())
-            os.kill(self.pid, signal.SIGKILL)
             exit(-1)
         finally:
             self.pickle_handler.close()
+
+    def process_event(self, inotify_event):
+        (watch_path, mask, cookie, filename) = inotify_event
+        if mask & IN_CREATE or mask & IN_MOVED_TO:
+            if self.is_need_monitor(filename):
+                full_filename = os.path.join(watch_path, filename)
+                if os.path.isfile(full_filename):
+                    _new_file_handler = open(full_filename, 'r')
+                    self.__monitor_dict[full_filename] = _new_file_handler
+                    self.handlers.append(_new_file_handler)
+                    self._update_pickle(_new_file_handler)
+        elif mask & IN_MODIFY:
+            _in_process_file_handler = self.__monitor_dict.get(os.path.join(watch_path, filename))
+            if _in_process_file_handler:
+                _data = self._get_log_data_by_handler(_in_process_file_handler)
+                if _data:
+                    chn = self.channel()
+                    for _line in _data:
+                        chn.put(self.msg_join(filename=_in_process_file_handler.name, data=_line))
+                        # 数据完整性由collector来保证
+                    self._update_pickle(_in_process_file_handler)
+        elif mask & IN_DELETE or mask & IN_MOVED_FROM:
+            _delete_file_handler = self.__monitor_dict.get(os.path.join(watch_path, filename))
+            if _delete_file_handler:
+                self.__monitor_dict.pop(os.path.join(watch_path, filename))
+                _delete_file_handler.close()
+                self.handlers.remove(_delete_file_handler)
+                self._reset_pickle([_delete_file_handler.name])
 
 
 class Agent(InotifyAgent, KqueueAgent):
@@ -263,17 +296,21 @@ class Agent(InotifyAgent, KqueueAgent):
     def run(self, channel=None):
         self.pid = os.getpid()
 
-        def _exit(*args, **kwargs):
+        def _kqueue_exit(*args, **kwargs):
             self.logger.info('Received sigterm, agent is going down.')
             self.exit_flag = True
             os.kill(self.pid, signal.SIGUSR1)
 
-        signal.signal(signal.SIGTERM, _exit)
+        def _inotify_exit(*args, **kwargs):
+            self.logger.info('Received sigterm, agent is going down.')
+            self.exit_flag = True
 
         self.logger.info('Pyflume agent starts.')
         self.channel = channel
         if platform.system() == 'Linux':
+            signal.signal(signal.SIGTERM, _inotify_exit)
             self.monitor_file_inotify()
         else:
+            signal.signal(signal.SIGTERM, _kqueue_exit)
             self.monitor_file_kqueue()
         self.logger.info('Pyflume agent ends.')
