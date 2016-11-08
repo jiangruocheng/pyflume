@@ -66,7 +66,7 @@ class KafkaCollector(Collector):
     def __init__(self, config, section):
         super(KafkaCollector, self).__init__(config)
         self.log.debug(config.get(section, 'SERVER'))
-        self.config= config
+        self.config = config
         self.section = section
         self.topic = config.get(section, 'TOPIC')
         self.producer = None
