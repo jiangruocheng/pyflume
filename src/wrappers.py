@@ -1,3 +1,5 @@
+# -*- coding:utf-8 -*-
+
 from threading import Lock
 
 PICKLE_LOCK = Lock()

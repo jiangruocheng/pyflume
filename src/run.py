@@ -18,7 +18,11 @@ if _basedir not in sys.path:
 
 if __name__ == '__main__':
 
-    signal.signal(signal.SIGUSR1, lambda: 0)
+    # 注册信号, 阻止进程接收到SIGUSR1后直接退出
+    def func(*args, **kwargs):
+        pass
+    signal.signal(signal.SIGUSR1, func)
+
     parser = argparse.ArgumentParser()
     parser.add_argument('-c', '--configure', help='给定配置文件路径,导入配置')
     args = parser.parse_args()
@@ -29,8 +33,8 @@ if __name__ == '__main__':
             config.read(args.configure)
         else:
             print 'No configure file exists.'
+            exit()
     else:
-        # 使用默认配置
         print 'please import configure file.'
         exit()
 
@@ -38,11 +42,10 @@ if __name__ == '__main__':
     handler = TimedRotatingFileHandler(log_path, "midnight", 1)
     formatter = '%(asctime)s - %(filename)s:%(lineno)s - %(name)s - %(message)s'
     handler.setFormatter(logging.Formatter(formatter))
-    level = logging.DEBUG
+    level = logging.DEBUG if config.get('LOG', 'DEBUG') == 'True' else logging.ERROR
     logger = logging.getLogger(config.get('LOG', 'LOG_HANDLER'))
     logger.setLevel(level)
     logger.addHandler(handler)
 
     pyflume = Pyflume(config)
     pyflume.run()
-

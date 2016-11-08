@@ -1,173 +1,54 @@
 #! -*- coding:utf-8 -*-
 
 import os
-import select
-import pickle
 import signal
 import logging
-import threading
-import traceback
 
-from time import sleep
-from select import KQ_FILTER_SIGNAL, KQ_FILTER_READ, KQ_EV_ADD
+from multiprocessing import Process, Queue
 
-from collector import Collector
-from wrappers import pickle_lock
+from agent import Agent
+from collector import CollectorProxy
 
 
 class Pyflume(object):
 
     def __init__(self, config):
-        self.pickle_File = config.get('TEMP', 'PICKLE_FILE')
-        self.max_read_line = int(config.get('POOL', 'MAX_READ_LINE'))
-        self.pickle_handler = None
-        self.pickle_data = None
-        self.handlers = list()
-        self.pool_path = config.get('POOL', 'POOL_PATH')
-        self.logger = logging.getLogger(config.get('LOG', 'LOG_HANDLER'))
-        self.pid = os.getpid()
+        self.log = logging.getLogger(config.get('LOG', 'LOG_HANDLER'))
+        self.queue = Queue()
+        self.agent = Agent(config)
+        self.collector = CollectorProxy(config)
+        self.agent_pid = None
+        self.collector_pid = None
 
-    @pickle_lock
-    def _load_pickle(self):
-        if not os.path.exists(self.pickle_File):
-            try:
-                self.pickle_handler = open(self.pickle_File, 'w+')
-            except IOError:
-                self.logger.error(traceback.format_exc())
-                exit(-1)
+        signal.signal(signal.SIGTERM, self.kill)
 
-        self.pickle_handler = open(self.pickle_File, 'r+')
-        try:
-            self.pickle_data = pickle.load(self.pickle_handler)
-            self.logger.debug('load pickle_data:' + str(self.pickle_data))
-        except EOFError:
-            self.logger.warning('No pickle data exits.')
-            self.pickle_data = dict()
+    def channel(self, *args, **kwargs):
 
-    @pickle_lock
-    def _update_pickle(self, file_handler):
-        self.logger.debug('before update pickle_data:' + str(self.pickle_data))
-        # 数据已成功采集,更新offset
-        self.pickle_data[file_handler.name] = file_handler.tell()
-        self.logger.debug('after update pickle_data:' + str(self.pickle_data))
-        # 从文件读取pickle_data时offset已经改变,现在重置到0
-        self.pickle_handler.seek(0)
-        pickle.dump(self.pickle_data, self.pickle_handler)
+        return self.queue
 
-    @pickle_lock
-    def _reset_pickle(self, file_names):
-        self.logger.debug('before reset pickle_data:' + str(self.pickle_data))
-        for name in file_names:
-            self.pickle_data[self.pool_path+name] = 0
-            self.pickle_handler.seek(0)
-            pickle.dump(self.pickle_data, self.pickle_handler)
-        self.logger.debug('after reset pickle_data:' + str(self.pickle_data))
+    def kill(self, *args, **kwargs):
+        os.kill(self.agent_pid, signal.SIGTERM)
+        os.kill(self.collector_pid, signal.SIGTERM)
 
-    @pickle_lock
-    def _get_pickle_data(self, file_name):
-
-        return self.pickle_data[file_name]
-
-    def _get_log_data_by_handler(self, handler):
-        # 先获取文件上次读取的偏移量
-        _file_name = handler.name
-        try:
-            _offset = self._get_pickle_data(_file_name)
-        except KeyError:
-            self.logger.warning('Cant find "%s" in pickles.' % _file_name)
-            _offset = 0
-        handler.seek(_offset)
-        _data = handler.readlines(self.max_read_line)
-        if _data:
-            return _data
-        else:
-            return None
-
-    def get_handlers(self):
-        handlers = list()
-        _files = os.listdir(self.pool_path)
-        for _file in _files:
-            if 'COMPLETED' != _file.split('.')[-1]:
-                if os.path.isfile(self.pool_path + _file):
-                    try:
-                        _handler = open(self.pool_path + _file, 'r')
-                        handlers.append(_handler)
-                    except IOError:
-                        self.logger.error(traceback.format_exc())
-                        return []
-
-        return handlers
-    
     def run(self):
+        self.log.info('Pyflume starts.')
+        _agent_process = Process(name='pyflume-agent',
+                                 target=self.agent.run,
+                                 kwargs={'channel': self.channel})
+        _collector_process = Process(name='pyflume-collector',
+                                     target=self.collector.run,
+                                     kwargs={'channel': self.channel})
 
-        _thread_move = threading.Thread(target=self.monitor_file_move, name='monitor_file_move')
-        _thread_content = threading.Thread(target=self.monitor_file_content, name='monitor_file_content')
+        _agent_process.start()
+        _collector_process.start()
 
-        _thread_move.start()
-        _thread_content.start()
+        self.agent_pid = _agent_process.pid
+        self.collector_pid = _collector_process.pid
+        self.log.debug('agent pid: ' + str(self.agent_pid))
+        self.log.debug('collector pid: ' + str(self.collector_pid))
 
-        _thread_move.join()
-        _thread_content.join()
+        signal.pause()
 
-    def monitor_file_move(self):
-        sleep(10)
-
-        before_directories = set()
-        after_directories = set()
-
-        while True:
-            try:
-                after_directories = set(os.listdir(self.pool_path))
-                xor_set = after_directories ^ before_directories
-                if xor_set:
-                    self._reset_pickle(list(xor_set))
-                    os.kill(self.pid, signal.SIGUSR1)
-                    before_directories = after_directories
-                    self.logger.debug(str(xor_set) + 'These files are added or deleted;')
-            except:
-                self.logger.error(traceback.format_exc())
-                os.kill(self.pid, signal.SIGKILL)
-                exit(-1)
-
-            sleep(10)
-
-    def monitor_file_content(self):
-
-        while True:
-            try:
-                break_flag = True
-                self.handlers = self.get_handlers()
-                self._load_pickle()
-                kq = select.kqueue()
-                _monitor_list = list()
-                _monitor_dict = dict()
-                for _handler in self.handlers:
-                    _monitor_list.append(
-                        select.kevent(_handler.fileno(), filter=KQ_FILTER_READ, flags=KQ_EV_ADD)
-                    )
-                    _monitor_dict[_handler.fileno()] = _handler
-                _monitor_list.append(
-                    select.kevent(signal.SIGUSR1, filter=KQ_FILTER_SIGNAL, flags=KQ_EV_ADD)
-                )
-                # 此时另一个线程负责监控文件的变动,例如新文件的移入,另一个线程会发送信号终止这个循环,重新遍历获取所有文件的句柄.
-                while break_flag:
-                    revents = kq.control(_monitor_list, 3)
-                    for event in revents:
-                        if event.filter == select.KQ_FILTER_READ:
-                            _in_process_file_handler = _monitor_dict[event.ident]
-                            _data = self._get_log_data_by_handler(_in_process_file_handler)
-                            if not _data:
-                                continue
-                            _result_flag = Collector().process_data(_in_process_file_handler, _data)
-                            if _result_flag:
-                                self._update_pickle(_in_process_file_handler)
-                        elif event.filter == select.KQ_FILTER_SIGNAL:
-                            if event.ident == signal.SIGUSR1:
-                                self.logger.info(u'捕捉到信号SIGUSR1,重新获取文件句柄')
-                                break_flag = False
-            except Exception:
-                self.logger.error(traceback.format_exc())
-                os.kill(self.pid, signal.SIGKILL)
-                exit(-1)
-            finally:
-                self.pickle_handler.close()
+        _agent_process.join()
+        _collector_process.join()
+        self.log.info('Pyflume ends.')
