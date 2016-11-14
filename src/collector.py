@@ -77,7 +77,7 @@ class KafkaCollector(Collector):
 
         self.producer = KafkaProducer(bootstrap_servers=self.config.get(self.section, 'SERVER'))
 
-        future = self.producer.send(self.topic, _data.encode('utf-8'))
+        future = self.producer.send(self.topic, _data)
         # Block for 'synchronous' sends
         try:
             record_metadata = future.get(timeout=10)
