@@ -9,7 +9,7 @@ import threading
 import traceback
 import os
 import re
-import json
+
 from time import sleep
 from errno import EINTR
 
