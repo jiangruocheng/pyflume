@@ -10,6 +10,7 @@ import traceback
 import os
 import re
 
+from multiprocessing import Process
 from time import sleep
 from errno import EINTR
 
@@ -22,14 +23,34 @@ else:
     from select import KQ_FILTER_SIGNAL, KQ_FILTER_READ, KQ_EV_ADD
 
 
-class AgentBase(object):
+class AgentProxy(object):
 
     def __init__(self, config):
+        self.pids = list()
+        self.agents = dict()
+        self.processes = list()
+        for section in config.sections():
+            if section.startswith('POOL:'):
+                self.agents[section.split(':')[1]] = Agent(config, section)
+
+    def run(self, channel=None):
+        for name, agent in self.agents.iteritems():
+            _agent_process = Process(name=name,
+                                     target=agent.run,
+                                     kwargs={'channel': channel, 'name': name})
+            _agent_process.start()
+            self.processes.append(_agent_process)
+            self.pids.append(_agent_process.pid)
+
+
+class AgentBase(object):
+
+    def __init__(self, config, section):
         self.logger = logging.getLogger(config.get('LOG', 'LOG_HANDLER'))
         self.pickle_File = config.get('TEMP', 'PICKLE_FILE')
-        self.pool_path = config.get('POOL', 'POOL_PATH')
-        self.filename_pattern = re.compile(config.get('POOL', 'FILENAME_PATTERN'))
-        self.collector_name = config.get('POOL', 'COLLECTOR')
+        self.pool_path = config.get(section, 'POOL_PATH')
+        self.filename_pattern = re.compile(config.get(section, 'FILENAME_PATTERN'))
+        self.collector_name = config.get(section, 'COLLECTOR')
         self.pickle_handler = None
         self.pickle_data = None
         self.handlers = list()
@@ -123,8 +144,8 @@ class AgentBase(object):
 
 class KqueueAgent(AgentBase):
 
-    def __init__(self, config):
-        super(KqueueAgent, self).__init__(config)
+    def __init__(self, config, section):
+        super(KqueueAgent, self).__init__(config, section)
 
     def monitor_file_kqueue(self):
         _thread_move = threading.Thread(target=self.monitor_file_move, name='monitor_file_move')
@@ -214,8 +235,8 @@ class KqueueAgent(AgentBase):
 
 class InotifyAgent(AgentBase):
 
-    def __init__(self, config):
-        super(InotifyAgent, self).__init__(config)
+    def __init__(self, config, section):
+        super(InotifyAgent, self).__init__(config, section)
         self.__monitor_dict = dict()
 
     def monitor_file_inotify(self):
@@ -290,22 +311,22 @@ class InotifyAgent(AgentBase):
 
 class Agent(InotifyAgent, KqueueAgent):
 
-    def __init__(self, config):
-        super(Agent, self).__init__(config)
+    def __init__(self, config, section):
+        super(Agent, self).__init__(config, section)
 
-    def run(self, channel=None):
+    def run(self, channel=None, name=''):
         self.pid = os.getpid()
 
         def _kqueue_exit(*args, **kwargs):
-            self.logger.info('Received sigterm, agent is going down.')
+            self.logger.info('Received sigterm, agent[{}] is going down.'.format(name))
             self.exit_flag = True
             os.kill(self.pid, signal.SIGUSR1)
 
         def _inotify_exit(*args, **kwargs):
-            self.logger.info('Received sigterm, agent is going down.')
+            self.logger.info('Received sigterm, agent[{}] is going down.'.format(name))
             self.exit_flag = True
 
-        self.logger.info('Pyflume agent starts.')
+        self.logger.info('Pyflume agent[{}] starts.'.format(name))
         self.channel = channel
         if platform.system() == 'Linux':
             signal.signal(signal.SIGTERM, _inotify_exit)
@@ -313,4 +334,4 @@ class Agent(InotifyAgent, KqueueAgent):
         else:
             signal.signal(signal.SIGTERM, _kqueue_exit)
             self.monitor_file_kqueue()
-        self.logger.info('Pyflume agent ends.')
+        self.logger.info('Pyflume agent[{}] ends.'.format(name))
