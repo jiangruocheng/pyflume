@@ -1,6 +1,7 @@
 #! -*- coding:utf-8 -*-
 
 import os
+import time
 import signal
 import logging
 
@@ -8,6 +9,8 @@ from multiprocessing import Process, Queue
 
 from agent import AgentProxy
 from collector import CollectorProxy
+
+from utils import isPidExist
 
 
 class Pyflume(object):
@@ -26,9 +29,18 @@ class Pyflume(object):
         return self.queue
 
     def kill(self, *args, **kwargs):
-        for _pid in self.agent.pids:
-            os.kill(_pid, signal.SIGTERM)
-        os.kill(self.collector_pid, signal.SIGTERM)
+        while True:
+            self.log.info('Waiting subprocess exit...')
+            for _pid in self.agent.pids:
+                os.kill(_pid, signal.SIGTERM)
+            os.kill(self.collector_pid, signal.SIGTERM)
+
+            time.sleep(1)
+
+            for _pid in self.agent.pids:
+                if isPidExist(_pid) or isPidExist(self.collector_pid):
+                    continue
+
 
     def run(self):
         self.log.info('Pyflume starts.')

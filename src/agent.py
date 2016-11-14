@@ -47,7 +47,7 @@ class AgentBase(object):
 
     def __init__(self, config, section):
         self.logger = logging.getLogger(config.get('LOG', 'LOG_HANDLER'))
-        self.pickle_File = config.get('TEMP', 'PICKLE_FILE')
+        self.pickle_File = config.get(section, 'PICKLE_FILE')
         self.pool_path = config.get(section, 'POOL_PATH')
         self.filename_pattern = re.compile(config.get(section, 'FILENAME_PATTERN'))
         self.collector_name = config.get(section, 'COLLECTOR')
@@ -57,6 +57,7 @@ class AgentBase(object):
         self.pid = None
         self.exit_flag = False
         self.channel = None
+        self.name = ''
 
     @pickle_lock
     def _load_pickle(self):
@@ -70,29 +71,29 @@ class AgentBase(object):
         self.pickle_handler = open(self.pickle_File, 'r+')
         try:
             self.pickle_data = pickle.load(self.pickle_handler)
-            self.logger.debug('load pickle_data:' + str(self.pickle_data))
+            self.logger.debug('[{}]load pickle_data:'.format(self.name) + str(self.pickle_data))
         except EOFError:
-            self.logger.warning('No pickle data exits.')
+            self.logger.warning('[{}]No pickle data exits.'.format(self.name))
             self.pickle_data = dict()
 
     @pickle_lock
     def _update_pickle(self, file_handler):
-        self.logger.debug('before update pickle_data:' + str(self.pickle_data))
+        self.logger.debug('[{}]before update pickle_data:'.format(self.name) + str(self.pickle_data))
         # 数据已成功采集,更新offset
         self.pickle_data[file_handler.name] = file_handler.tell()
-        self.logger.debug('after update pickle_data:' + str(self.pickle_data))
+        self.logger.debug('[{}]after update pickle_data:'.format(self.name) + str(self.pickle_data))
         # 从文件读取pickle_data时offset已经改变,现在重置到0
         self.pickle_handler.seek(0)
         pickle.dump(self.pickle_data, self.pickle_handler)
 
     @pickle_lock
     def _reset_pickle(self, file_names):
-        self.logger.debug('before reset pickle_data:' + str(self.pickle_data))
+        self.logger.debug('[{}]before reset pickle_data:'.format(self.name) + str(self.pickle_data))
         for name in file_names:
             self.pickle_data[name] = 0
             self.pickle_handler.seek(0)
             pickle.dump(self.pickle_data, self.pickle_handler)
-        self.logger.debug('after reset pickle_data:' + str(self.pickle_data))
+        self.logger.debug('[{}]after reset pickle_data:'.format(self.name) + str(self.pickle_data))
 
     @pickle_lock
     def _get_pickle_data(self, file_name):
@@ -105,7 +106,7 @@ class AgentBase(object):
         try:
             _offset = self._get_pickle_data(_file_name)
         except KeyError:
-            self.logger.warning('Cant find "%s" in pickles.' % _file_name)
+            self.logger.warning('[{}]Cant find "%s" in pickles.'.format(self.name) % _file_name)
             _offset = 0
         handler.seek(_offset)
         _data = handler.readlines()
@@ -177,7 +178,7 @@ class KqueueAgent(AgentBase):
                     self._reset_pickle(xor_set_list)
                     os.kill(self.pid, signal.SIGUSR1)
                     before_directories = after_directories
-                    self.logger.debug(str(xor_set) + 'These files are added or deleted;')
+                    self.logger.debug('[{}]'.format(self.name) + str(xor_set) + 'These files are added or deleted;')
             except:
                 self.logger.error(traceback.format_exc())
                 os.kill(self.pid, signal.SIGKILL)
@@ -220,7 +221,7 @@ class KqueueAgent(AgentBase):
                             self._update_pickle(_in_process_file_handler)
                         elif event.filter == select.KQ_FILTER_SIGNAL:
                             if event.ident == signal.SIGUSR1:
-                                self.logger.info(u'捕捉到信号SIGUSR1')
+                                self.logger.info(u'[{}]捕捉到信号SIGUSR1'.format(self.name))
                                 # 关闭文件句柄，避免过量问题
                                 for _handler in self.handlers:
                                     _handler.close()
@@ -315,7 +316,9 @@ class Agent(InotifyAgent, KqueueAgent):
         super(Agent, self).__init__(config, section)
 
     def run(self, channel=None, name=''):
+        self.name = name
         self.pid = os.getpid()
+        self.logger.debug('agent[{}] pid: '.format(name) + str(self.pid))
 
         def _kqueue_exit(*args, **kwargs):
             self.logger.info('Received sigterm, agent[{}] is going down.'.format(name))
