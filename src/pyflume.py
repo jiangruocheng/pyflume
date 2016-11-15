@@ -10,8 +10,6 @@ from multiprocessing import Process, Queue
 from agent import AgentProxy
 from collector import CollectorProxy
 
-from utils import isPidExist
-
 
 class Pyflume(object):
 
@@ -20,7 +18,8 @@ class Pyflume(object):
         self.queue = Queue()
         self.agent = AgentProxy(config)
         self.collector = CollectorProxy(config)
-        self.collector_pid = None
+        self.pids = list()
+        self.processes = list()
 
         signal.signal(signal.SIGTERM, self.kill)
 
@@ -29,18 +28,14 @@ class Pyflume(object):
         return self.queue
 
     def kill(self, *args, **kwargs):
-        while True:
-            self.log.info('Waiting subprocess exit...')
-            for _pid in self.agent.pids:
+        self.log.debug('pids:' + str(self.pids))
+        self.log.info('Waiting subprocess exit...')
+        for _pid in self.pids:
+            try:
                 os.kill(_pid, signal.SIGTERM)
-            os.kill(self.collector_pid, signal.SIGTERM)
-
-            time.sleep(1)
-
-            for _pid in self.agent.pids:
-                if isPidExist(_pid) or isPidExist(self.collector_pid):
-                    continue
-
+                time.sleep(1)
+            except:
+                pass
 
     def run(self):
         self.log.info('Pyflume starts.')
@@ -48,15 +43,16 @@ class Pyflume(object):
                                      target=self.collector.run,
                                      kwargs={'channel': self.channel})
         _collector_process.start()
-        self.collector_pid = _collector_process.pid
-        self.log.debug('collector pid: ' + str(self.collector_pid))
+        self.pids.append(_collector_process.pid)
+        self.processes.append(_collector_process)
 
         self.agent.run(channel=self.channel)
+        self.pids += self.agent.pids
+        self.processes += self.agent.processes
 
         signal.pause()
 
-        _collector_process.join()
-        for agent_process in self.agent.processes:
-            agent_process.join()
+        for _process in self.processes:
+            _process.join()
 
         self.log.info('Pyflume ends.')

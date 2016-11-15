@@ -155,7 +155,8 @@ class KqueueAgent(AgentBase):
         _thread_move.start()
         _thread_content.start()
 
-        signal.pause()  # 阻塞这里，等待信号
+        while not self.exit_flag:
+            sleep(60)  # 等待信号
 
         _thread_move.join()
         _thread_content.join()
