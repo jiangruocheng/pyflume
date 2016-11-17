@@ -7,7 +7,7 @@ import logging
 
 from multiprocessing import Process, Queue
 
-from agent_proxy import AgentProxy
+from agent import AgentProxy
 from collector import CollectorProxy
 
 
