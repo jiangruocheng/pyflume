@@ -27,7 +27,6 @@ class CollectorProxy(object):
                     self.collectors[collector_name] = SockCollector(config, section)
                 else:
                     self.collectors[collector_name] = Collector(config)
-                    pass  # 错误处理
 
     def process_data(self):
         chn = self.channel()
@@ -108,7 +107,7 @@ class SockCollector(Collector):
 
         try:
             while True:
-                sock.sendall(_data)
+                sock.sendall(_data + '(EOF)')
                 result = sock.recv(1024)
                 if 'success' != result:
                     self.log.debug('Unsuccessful sending data.')
