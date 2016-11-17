@@ -49,3 +49,6 @@ if __name__ == '__main__':
 
     pyflume = Pyflume(config)
     pyflume.run()
+    # from observers.sockets import SocketAgent
+    # sa = SocketAgent(config, 'POOL:socket')
+    # sa.run()
