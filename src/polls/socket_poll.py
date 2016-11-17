@@ -12,6 +12,8 @@ class SocketPoll(object):
 
     def __init__(self, config, section):
         self.log = logging.getLogger(config.get('LOG', 'LOG_HANDLER'))
+        self.channel_name = config.get(section, 'CHANNEL')
+        self.channel = None
         self.ip = config.get(section, 'LISTEN_IP')
         self.port = int(config.get(section, 'LISTEN_PORT'))
         self.max_clients = config.get(section, 'MAX_CLIENTS')
@@ -22,10 +24,16 @@ class SocketPoll(object):
         return {'file_name': 'test.log', 'content': data[:-5]}
 
     def run(self, *args, **kwargs):
+        chn = kwargs.get('channel', None)
+        if not chn:
+            self.log.error('Channel should not be lost.')
+            raise Exception('Channel should not be lost.')
+
         sock = socket(AF_INET, SOCK_STREAM)
         sock.bind((self.ip, self.port))
         sock.listen(int(self.max_clients))
 
+        self.channel = chn(channel_name=self.channel_name)
         while True:
             connection, client_address = sock.accept()
             try:
@@ -35,12 +43,7 @@ class SocketPoll(object):
                     data += piece
                     if data.endswith('(EOF)'):
                         break
-                self.log.debug(data)
-                after_data = self.reformate(data)
-                file_path = os.path.join(self.sink_dir, after_data['file_name'])
-                # 写入本地文件, 并由hive collector适时导入hive
-                with open(file_path, 'w+') as f:
-                    f.write(after_data['content'])
+                self.channel.put(data)
                 connection.sendall('success')
             except:
                 self.log.error(traceback.format_exc())

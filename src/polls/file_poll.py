@@ -23,6 +23,8 @@ class FilePollBase(object):
         self.pickle_File = config.get(section, 'PICKLE_FILE')
         self.pool_path = config.get(section, 'POOL_PATH')
         self.filename_pattern = re.compile(config.get(section, 'FILENAME_PATTERN'))
+        self.channel_name = config.get(section, 'CHANNEL')
+        self.channel = None
         self.collector_name = config.get(section, 'COLLECTOR')
         self.pickle_handler = None
         self.pickle_data = None
@@ -142,7 +144,7 @@ if platform.system() == 'Linux':
                         _data = self._get_log_data_by_handler(_in_process_file_handler)
                         if not _data:
                             break
-                        chn = self.channel()
+                        chn = self.channel(channel_name=self.channel_name)
                         for _line in _data:
                             chn.put(self.msg_join(filename=_in_process_file_handler.name, data=_line))
                             # 数据完整性由collector来保证
@@ -181,7 +183,7 @@ if platform.system() == 'Linux':
                 if _in_process_file_handler:
                     _data = self._get_log_data_by_handler(_in_process_file_handler)
                     if _data:
-                        chn = self.channel()
+                        chn = self.channel(channel_name=self.channel_name)
                         for _line in _data:
                             chn.put(self.msg_join(filename=_in_process_file_handler.name, data=_line))
                             # 数据完整性由collector来保证
@@ -274,7 +276,7 @@ elif platform.system() == 'Darwin':
                                 if not _data:
                                     continue
                                 else:
-                                    chn = self.channel()
+                                    chn = self.channel(channel_name=self.channel_name)
                                     for _line in _data:
                                         chn.put(self.msg_join(filename=_in_process_file_handler.name, data=_line))
                                 # 数据完整性由collector来保证
@@ -309,14 +311,18 @@ class FilePoll(SystemPoll):
     def __init__(self, config, section):
         super(FilePoll, self).__init__(config, section)
 
-    def run(self, channel=None, name=''):
-        self.channel = channel
-        self.name = name
+    def run(self, *args, **kwargs):
+        chn = kwargs.get('channel', None)
+        if not chn:
+            self.log.error('Channel should not be lost.')
+            raise Exception('Channel should not be lost.')
+        self.channel = chn(channel_name=self.channel_name)
+        self.name = kwargs.get('name', '')
         self.pid = os.getpid()
 
-        self.logger.debug('agent[{}] pid: '.format(name) + str(self.pid))
-        self.logger.info('Pyflume agent[{}] starts.'.format(name))
+        self.logger.debug('agent[{}] pid: '.format(self.name) + str(self.pid))
+        self.logger.info('Pyflume agent[{}] starts.'.format(self.name))
 
         signal.signal(signal.SIGTERM, self.exit)
         self.monitor_file()
-        self.logger.info('Pyflume agent[{}] ends.'.format(name))
+        self.logger.info('Pyflume agent[{}] ends.'.format(self.name))

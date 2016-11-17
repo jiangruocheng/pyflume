@@ -7,14 +7,16 @@ import logging
 import traceback
 
 from socket import socket, AF_INET, SOCK_STREAM
+from threading import Thread, Event
 from kafka import KafkaProducer
 from kafka.errors import KafkaError
+
+event = Event()
 
 
 class CollectorProxy(object):
     def __init__(self, config):
         self.log = logging.getLogger(config.get('LOG', 'LOG_HANDLER'))
-        self.channel = None
         self.exit_flag = False
         self.collectors = dict()
         for section in config.sections():
@@ -25,50 +27,65 @@ class CollectorProxy(object):
                     self.collectors[collector_name] = KafkaCollector(config, section)
                 elif collector_type.lower() == 'socket':
                     self.collectors[collector_name] = SockCollector(config, section)
+                elif collector_type.lower() == 'hive':
+                    self.collectors[collector_name] = HiveCollector(config, section)
                 else:
-                    self.collectors[collector_name] = Collector(config)
+                    self.collectors[collector_name] = Collector(config, section)
 
-    def process_data(self):
-        chn = self.channel()
-        while not self.exit_flag:
-            _msg = chn.get()
-            if isinstance(_msg, str) and 'stop' == _msg:
-                continue
-            _target_collector = self.collectors.get(_msg['collector'])
-            self.log.info(_msg)
-            _target_collector.process_data(_msg)
+    def exit(self):
+        self.exit_flag = True
+        event.clear()
 
     def run(self, channel=None):
-        def _exit(*args, **kwargs):
-            self.log.info('Received sigterm, collector is going down.')
-            self.exit_flag = True
-            # 解除阻塞
-            self.channel().put('stop')
-
-        signal.signal(signal.SIGTERM, _exit)
-
         self.log.info('Pyflume collector starts.')
-        self.channel = channel
-        self.process_data()
+        event.set()
+        tasks = list()
+        for col_name, collector in self.collectors.iteritems():
+            t = Thread(target=collector.run,
+                       name=col_name,
+                       kwargs={'channel': channel})
+            tasks.append(t)
+            t.start()
+
+        signal.signal(signal.SIGTERM, self.exit)
+        while not self.exit_flag:
+            time.sleep(60)
+
+        for _t in tasks:
+            _t.join()
+
         self.log.info('Pyflume collector ends.')
 
 
 class Collector(object):
-    def __init__(self, config=None):
+    def __init__(self, config=None, section=''):
         self.log = logging.getLogger(config.get('LOG', 'LOG_HANDLER'))
+        self.channel_name = config.get(section, 'CHANNEL')
+        self.channel = None
 
     def process_data(self, msg):
         _data = msg['filename'] + ': ' + msg['data']
         sys.stdout.write(_data)
         sys.stdout.flush()
 
+    def run(self, *args, **kwargs):
+        """This maybe implemented by subclass"""
+        chn = kwargs.get('channel', None)
+        if not chn:
+            self.log.error('Channel should not be lost.')
+            raise Exception('Channel should not be lost.')
+        self.channel = chn(channel_name=self.channel_name)
+        while event.wait():
+            data = self.channel.get(timeout=10)
+            self.process_data(data)
+
 
 class KafkaCollector(Collector):
     def __init__(self, config, section):
-        super(KafkaCollector, self).__init__(config)
+        super(KafkaCollector, self).__init__(config, section)
         self.log.debug(config.get(section, 'SERVER'))
-        self.config = config
-        self.section = section
+        self.channel_name = self.config.get(section, 'CHANNEL')
+        self.kfk_server = self.config.get(self.section, 'SERVER')
         self.topic = config.get(section, 'TOPIC')
         self.producer = None
 
@@ -76,7 +93,7 @@ class KafkaCollector(Collector):
         _data = msg['filename'] + ': ' + msg['data']
         self.log.debug(msg['collector'] + _data)
 
-        self.producer = KafkaProducer(bootstrap_servers=self.config.get(self.section, 'SERVER'))
+        self.producer = KafkaProducer(bootstrap_servers=self.kfk_server)
 
         future = self.producer.send(self.topic, _data)
         # Block for 'synchronous' sends
@@ -94,7 +111,7 @@ class KafkaCollector(Collector):
 
 class SockCollector(Collector):
     def __init__(self, config, section):
-        super(SockCollector, self).__init__(config)
+        super(SockCollector, self).__init__(config, section)
         self.server_ip = config.get(section, 'SERVER_IP')
         self.server_port = int(config.get(section, 'SERVER_PORT'))
 
@@ -123,4 +140,13 @@ class SockCollector(Collector):
 
 
 class HiveCollector(Collector):
-    pass
+    def __init__(self, config, section):
+        super(HiveCollector, self).__init__(config, section)
+        self.ip = config.get(section, 'HIVE_IP')
+        self.port = int(config.get(section, 'HIVE_PORT'))
+        self.name = config.get(section, 'HIVE_USER_NAME')
+        self.channel_name = config.get(section, 'CHANNEL')
+
+    def run(self, *args, **kwargs):
+        # TODO
+        pass

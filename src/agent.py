@@ -27,7 +27,8 @@ class AgentProxy(object):
         for name, agent in self.agents.iteritems():
             _agent_process = Process(name=name,
                                      target=agent.run,
-                                     kwargs={'channel': channel, 'name': name})
+                                     kwargs={'channel': channel,
+                                             'name': name})
             _agent_process.start()
             self.processes.append(_agent_process)
             self.pids.append(_agent_process.pid)
