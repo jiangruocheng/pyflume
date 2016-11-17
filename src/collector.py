@@ -26,6 +26,7 @@ class CollectorProxy(object):
                 elif collector_type.lower() == 'socket':
                     self.collectors[collector_name] = SockCollector(config, section)
                 else:
+                    self.collectors[collector_name] = Collector(config)
                     pass  # 错误处理
 
     def process_data(self):

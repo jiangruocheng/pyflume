@@ -5,7 +5,7 @@ import logging
 from socket import socket, AF_INET, SOCK_STREAM
 
 
-class SocketAgent(object):
+class SocketPoll(object):
     """从socket客户端收集日志"""
 
     def __init__(self, config, section):
@@ -15,7 +15,7 @@ class SocketAgent(object):
         self.max_clients = config.get(section, 'MAX_CLIENTS')
         self.sink_dir = config.get(section, 'SINK_DIR')
 
-    def run(self):
+    def run(self, channel=None, name=''):
         sock = socket(AF_INET, SOCK_STREAM)
         sock.bind((self.ip, self.port))
         sock.listen(int(self.max_clients))

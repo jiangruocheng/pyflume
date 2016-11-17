@@ -2,6 +2,12 @@
 
 import os
 import sys
+
+# 将当前路径添加到系统路径中
+_basedir = os.path.abspath(os.path.dirname(__file__))
+if _basedir not in sys.path:
+    sys.path.insert(0, _basedir)
+
 import signal
 import logging
 import argparse
@@ -11,10 +17,6 @@ from logging.handlers import TimedRotatingFileHandler
 
 from pyflume import Pyflume
 
-# 将当前路径添加到系统路径中
-_basedir = os.path.abspath(os.path.dirname(__file__))
-if _basedir not in sys.path:
-    sys.path.insert(0, _basedir)
 
 if __name__ == '__main__':
 
@@ -49,6 +51,3 @@ if __name__ == '__main__':
 
     pyflume = Pyflume(config)
     pyflume.run()
-    # from observers.sockets import SocketAgent
-    # sa = SocketAgent(config, 'POOL:socket')
-    # sa.run()
