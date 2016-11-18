@@ -1,7 +1,8 @@
 #! -*- coding:utf-8 -*-
 
-import traceback
+import os
 import logging
+import traceback
 
 from socket import socket, AF_INET, SOCK_STREAM
 
@@ -19,7 +20,10 @@ class SocketPoll(object):
 
     def reformate(self, data):
         # Shoud be implemented by subclass
-        return {'filename': 'test.log', 'data': data[:-5]}
+        _list = data.split(':')
+        filename = os.path.basename(_list[0])
+        _data = ''.join(_list[1:])[:-5]
+        return {'filename': filename, 'data': _data.lstrip()}
 
     def run(self, *args, **kwargs):
         chn = kwargs.get('channel', None)
