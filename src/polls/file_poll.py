@@ -31,7 +31,6 @@ class FilePollBase(object):
         self.handlers = list()
         self.pid = None
         self.exit_flag = False
-        self.channel = None
         self.name = ''
 
     @pickle_lock
@@ -144,9 +143,8 @@ if platform.system() == 'Linux':
                         _data = self._get_log_data_by_handler(_in_process_file_handler)
                         if not _data:
                             break
-                        chn = self.channel(channel_name=self.channel_name)
                         for _line in _data:
-                            chn.put(self.msg_join(filename=_in_process_file_handler.name, data=_line))
+                            self.channel.put(self.msg_join(filename=_in_process_file_handler.name, data=_line))
                             # 数据完整性由collector来保证
                         self._update_pickle(_in_process_file_handler)
 
@@ -183,9 +181,8 @@ if platform.system() == 'Linux':
                 if _in_process_file_handler:
                     _data = self._get_log_data_by_handler(_in_process_file_handler)
                     if _data:
-                        chn = self.channel(channel_name=self.channel_name)
                         for _line in _data:
-                            chn.put(self.msg_join(filename=_in_process_file_handler.name, data=_line))
+                            self.channel.put(self.msg_join(filename=_in_process_file_handler.name, data=_line))
                             # 数据完整性由collector来保证
                         self._update_pickle(_in_process_file_handler)
             elif mask & IN_DELETE or mask & IN_MOVED_FROM:
@@ -276,9 +273,8 @@ elif platform.system() == 'Darwin':
                                 if not _data:
                                     continue
                                 else:
-                                    chn = self.channel(channel_name=self.channel_name)
                                     for _line in _data:
-                                        chn.put(self.msg_join(filename=_in_process_file_handler.name, data=_line))
+                                        self.channel.put(self.msg_join(filename=_in_process_file_handler.name, data=_line))
                                 # 数据完整性由collector来保证
                                 self._update_pickle(_in_process_file_handler)
                             elif event.filter == select.KQ_FILTER_SIGNAL:

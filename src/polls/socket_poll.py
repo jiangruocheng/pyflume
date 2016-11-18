@@ -1,6 +1,5 @@
 #! -*- coding:utf-8 -*-
 
-import os
 import traceback
 import logging
 
@@ -17,11 +16,10 @@ class SocketPoll(object):
         self.ip = config.get(section, 'LISTEN_IP')
         self.port = int(config.get(section, 'LISTEN_PORT'))
         self.max_clients = config.get(section, 'MAX_CLIENTS')
-        self.sink_dir = config.get(section, 'SINK_DIR')
 
     def reformate(self, data):
         # Shoud be implemented by subclass
-        return {'file_name': 'test.log', 'content': data[:-5]}
+        return {'filename': 'test.log', 'data': data[:-5]}
 
     def run(self, *args, **kwargs):
         chn = kwargs.get('channel', None)
@@ -43,7 +41,7 @@ class SocketPoll(object):
                     data += piece
                     if data.endswith('(EOF)'):
                         break
-                self.channel.put(data)
+                self.channel.put(self.reformate(data))
                 connection.sendall('success')
             except:
                 self.log.error(traceback.format_exc())

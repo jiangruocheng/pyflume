@@ -10,6 +10,7 @@ from socket import socket, AF_INET, SOCK_STREAM
 from threading import Thread, Event
 from kafka import KafkaProducer
 from kafka.errors import KafkaError
+from multiprocessing.queues import Empty
 
 event = Event()
 
@@ -32,7 +33,7 @@ class CollectorProxy(object):
                 else:
                     self.collectors[collector_name] = Collector(config, section)
 
-    def exit(self):
+    def exit(self, *args, **kwargs):
         self.exit_flag = True
         event.clear()
 
@@ -76,7 +77,10 @@ class Collector(object):
             raise Exception('Channel should not be lost.')
         self.channel = chn(channel_name=self.channel_name)
         while event.wait():
-            data = self.channel.get(timeout=10)
+            try:
+                data = self.channel.get(timeout=10)
+            except Empty:
+                continue
             self.process_data(data)
 
 
