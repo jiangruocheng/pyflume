@@ -11,6 +11,6 @@ class MemoryChannel(object):
 
         return self.queue.get(timeout=timeout)
 
-    def put(self, data):
+    def put(self, data, timeout=30):
 
-        self.queue.put(data)
+        self.queue.put(data, timeout=timeout)

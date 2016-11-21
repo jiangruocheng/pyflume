@@ -66,11 +66,6 @@ class Pyflume(object):
 
 
 def start():
-    # 注册信号, 阻止进程接收到SIGUSR1后直接退出
-    def func(*args, **kwargs):
-        pass
-    signal.signal(signal.SIGUSR1, func)
-
     parser = argparse.ArgumentParser()
     parser.add_argument('-c', '--configure', help='给定配置文件路径,导入配置')
     args = parser.parse_args()
@@ -81,10 +76,10 @@ def start():
             config.read(args.configure)
         else:
             print 'No configure file exists.'
-            exit()
+            sys.exit(0)
     else:
         print 'please import configure file.'
-        exit()
+        sys.exit(0)
 
     log_path = config.get('LOG', 'LOG_FILE')
     handler = TimedRotatingFileHandler(log_path, "midnight", 1)
@@ -97,3 +92,7 @@ def start():
 
     pyflume = Pyflume(config)
     pyflume.run()
+
+if __name__ == '__main__':
+
+    start()

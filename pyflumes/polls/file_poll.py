@@ -224,6 +224,8 @@ elif platform.system() == 'Darwin':
     class KqueuePoll(FilePollBase):
         def __init__(self, config, section):
             super(KqueuePoll, self).__init__(config, section)
+            self.exit_flag_0 = False
+            self.exit_flag_1 = False
 
         def monitor_file(self):
             _thread_move = threading.Thread(target=self.monitor_file_move, name='monitor_file_move')
@@ -232,11 +234,8 @@ elif platform.system() == 'Darwin':
             _thread_move.start()
             _thread_content.start()
 
-            while not self.exit_flag:
+            while self.exit_flag_0 is False or self.exit_flag_1 is False:
                 sleep(60)  # 等待信号
-
-            _thread_move.join()
-            _thread_content.join()
 
         def monitor_file_move(self):
             _is_first_time = True
@@ -261,6 +260,8 @@ elif platform.system() == 'Darwin':
                     self.logger.error(traceback.format_exc())
 
                 sleep(10)
+            self.logger.info('File move monitor leave.')
+            self.exit_flag_0 = True
 
         def monitor_file_content(self):
 
@@ -282,7 +283,7 @@ elif platform.system() == 'Darwin':
                     )
                     # 此时另一个线程负责监控文件的变动,例如新文件的移入,另一个线程会发送信号终止这个循环,重新遍历获取所有文件的句柄.
                     while break_flag:
-                        revents = kq.control(_monitor_list, 3)
+                        revents = kq.control(_monitor_list, 16)
                         for event in revents:
                             if event.filter == select.KQ_FILTER_READ:
                                 _in_process_file_handler = _monitor_dict[event.ident]
@@ -308,6 +309,9 @@ elif platform.system() == 'Darwin':
                     sleep(30)
                 finally:
                     self.pickle_handler.close()
+
+            self.logger.info('File content monitor leave.')
+            self.exit_flag_1 = True
 
         def exit(self, *args, **kwargs):
             self.logger.info('Received sigterm, agent[{}] is going down.'.format(self.name))
