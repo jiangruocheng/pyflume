@@ -1,10 +1,12 @@
 #! -*- coding:utf-8 -*-
 
 import os
+import sys
+import signal
 import logging
 import traceback
 
-from socket import socket, AF_INET, SOCK_STREAM
+from socket import socket, error, AF_INET, SOCK_STREAM
 
 
 class SocketPoll(object):
@@ -25,11 +27,17 @@ class SocketPoll(object):
         _data = ''.join(_list[1:])[:-5]
         return {'filename': filename, 'data': _data.lstrip()}
 
+    def exit(self, *args, **kwargs):
+        self.log.info('Socket poll is leaving.')
+        sys.exit(0)
+
     def run(self, *args, **kwargs):
         chn = kwargs.get('channel', None)
         if not chn:
             self.log.error('Channel should not be lost.')
             raise Exception('Channel should not be lost.')
+
+        signal.signal(signal.SIGTERM, self.exit)
 
         sock = socket(AF_INET, SOCK_STREAM)
         sock.bind((self.ip, self.port))
