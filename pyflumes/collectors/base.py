@@ -18,7 +18,7 @@ class Collector(object):
         self.channel = None
 
     def process_data(self, msg):
-        sys.stdout.write(msg)
+        sys.stdout.write(msg['data'])
         sys.stdout.flush()
 
     def run(self, *args, **kwargs):

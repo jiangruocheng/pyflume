@@ -5,8 +5,10 @@ import sys
 import signal
 import logging
 import traceback
+import imp
 
 from socket import socket, error, AF_INET, SOCK_STREAM
+from configparser import NoOptionError
 
 
 class SocketPoll(object):
@@ -19,12 +21,25 @@ class SocketPoll(object):
         self.ip = config.get(section, 'LISTEN_IP')
         self.port = int(config.get(section, 'LISTEN_PORT'))
         self.max_clients = config.get(section, 'MAX_CLIENTS')
+        try:
+            _content_filter_script = config.get(section, 'CONTENT_FILTER_SCRIPT')
+            _m = imp.load_source('content_filter', _content_filter_script)
+            self.filter = _m.content_filter
+        except NoOptionError:
+            self.filter = None
+        except:
+            self.logger.error(traceback.format_exc())
+            exit(-1)
 
     def reformate(self, data):
         # Shoud be implemented by subclass
         _list = data.split(':')
         filename = os.path.basename(_list[0])
         _data = ''.join(_list[1:])[:-5]
+        if self.filter:
+            _data = self.filter(data)
+            if not _data:
+                return None
         return {'filename': filename, 'data': _data.lstrip()}
 
     def exit(self, *args, **kwargs):
@@ -53,7 +68,9 @@ class SocketPoll(object):
                     data += piece
                     if data.endswith('(EOF)'):
                         break
-                self.channel.put(self.reformate(data))
+                data = self.reformate(data)
+                if data:
+                    self.channel.put(data)
                 connection.sendall('success')
             except:
                 self.log.error(traceback.format_exc())
