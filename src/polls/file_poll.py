@@ -240,8 +240,6 @@ elif platform.system() == 'Darwin':
                         self.logger.debug('[{}]'.format(self.name) + str(xor_set) + 'These files are added or deleted;')
                 except:
                     self.logger.error(traceback.format_exc())
-                    os.kill(self.pid, signal.SIGKILL)
-                    exit(-1)
 
                 sleep(10)
 
@@ -286,8 +284,7 @@ elif platform.system() == 'Darwin':
                                     break_flag = False
                 except Exception:
                     self.logger.error(traceback.format_exc())
-                    os.kill(self.pid, signal.SIGKILL)
-                    exit(-1)
+                    sleep(30)
                 finally:
                     self.pickle_handler.close()
 
