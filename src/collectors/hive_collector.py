@@ -3,6 +3,7 @@
 import os
 import time
 import shutil
+import traceback
 
 from pyhive import hive
 
@@ -27,7 +28,10 @@ class HiveCollector(Collector):
         while event.wait(0):
             file_location = self.channel.get()
             if file_location:
-                self.process_data(file_location)
+                try:
+                    self.process_data(file_location)
+                except:
+                    self.log.error(traceback.format_exc())
             # 每60秒检查是否有数据
             time.sleep(60)
 

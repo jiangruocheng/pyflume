@@ -2,6 +2,7 @@
 
 import sys
 import logging
+import traceback
 
 from multiprocessing.queues import Empty
 from threading import Event
@@ -32,4 +33,7 @@ class Collector(object):
                 data = self.channel.get(timeout=10)
             except Empty:
                 continue
-            self.process_data(data)
+            try:
+                self.process_data(data)
+            except:
+                self.log.error(traceback.format_exc())
