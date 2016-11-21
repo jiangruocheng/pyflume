@@ -1,8 +1,9 @@
 #! -*- coding:utf-8 -*-
 
+import time
 import traceback
 
-from socket import socket, AF_INET, SOCK_STREAM
+from socket import socket, error, AF_INET, SOCK_STREAM
 
 from base import Collector
 
@@ -17,23 +18,20 @@ class SockCollector(Collector):
         _data = msg['filename'] + ': ' + msg['data']
         self.log.debug(msg['collector'] + _data)
 
-        sock = socket(AF_INET, SOCK_STREAM)
-        sock.connect((self.server_ip, self.server_port))
-
-        try:
-            while True:
+        while True:
+            try:
+                sock = socket(AF_INET, SOCK_STREAM)
+                sock.connect((self.server_ip, self.server_port))
+                self.log.debug('Connected to :' + str((self.server_ip, self.server_port)))
                 sock.sendall(_data + '(EOF)')
-                result = sock.recv(1024)
-                if 'success' != result:
-                    self.log.debug('Unsuccessful sending data.')
-                    time.sleep(30)
-                    continue
-                else:
-                    break
-        except:
-            self.log.debug(_data)
-            self.log.error(traceback.format_exc())
-        finally:
-            sock.close()
+            except error:
+                self.log.warning('Cant connect to :' + str((self.server_ip, self.server_port)))
+                time.sleep(30)
+                continue
+            except:
+                self.log.debug(_data)
+                self.log.error(traceback.format_exc())
+            finally:
+                sock.close()
 
-
+            break
