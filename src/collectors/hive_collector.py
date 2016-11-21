@@ -16,6 +16,8 @@ class HiveCollector(Collector):
         self.ip = config.get(section, 'HIVE_IP')
         self.port = int(config.get(section, 'HIVE_PORT'))
         self.name = config.get(section, 'HIVE_USER_NAME')
+        self.database = config.get(section, 'HIVE_DATABASE')
+        self.table = config.get(section, 'HIVE_TABLE')
         self.channel_name = config.get(section, 'CHANNEL')
 
     def run(self, *args, **kwargs):
@@ -38,8 +40,8 @@ class HiveCollector(Collector):
     def process_data(self, file_location):
         new_file_location = file_location + '.COMPLETE'
         shutil.move(file_location, new_file_location)
-        cursor = hive.connect(self.ip, port=self.port, database='test_db').cursor()
-        LOAD_HSQL = "LOAD DATA LOCAL INPATH '%s' INTO TABLE TB_LOAD_TEST" % new_file_location
+        cursor = hive.connect(self.ip, port=self.port, username=self.name, database=self.database).cursor()
+        LOAD_HSQL = "LOAD DATA LOCAL INPATH '%s' INTO TABLE %s" % (new_file_location, self.table)
         self.log.debug(LOAD_HSQL)
         cursor.execute(LOAD_HSQL)
         cursor.close()
