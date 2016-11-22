@@ -10,10 +10,11 @@ import platform
 import threading
 import traceback
 import imp
+import subprocess
 
 from errno import EINTR
 from time import sleep
-from configparser import NoOptionError
+from subprocess import PIPE
 
 from wrappers import pickle_lock
 
@@ -34,12 +35,26 @@ class FilePollBase(object):
         self.pid = None
         self.exit_flag = False
         self.name = ''
+        if config.has_option(section, 'CONTENT_FILTER_SCRIPT') and config.has_option(section, 'CONTENT_FILTER_COMMAND'):
+            raise Exception('Duplicate content filter: [CONTENT_FILTER_SCRIPT, CONTENT_FILTER_COMMAND]')
         try:
-            _content_filter_script = config.get(section, 'CONTENT_FILTER_SCRIPT')
-            _m = imp.load_source('content_filter', _content_filter_script)
-            self.filter = _m.content_filter
-        except NoOptionError:
-            self.filter = None
+            if config.has_option(section, 'CONTENT_FILTER_SCRIPT'):
+                _content_filter_script = config.get(section, 'CONTENT_FILTER_SCRIPT')
+                _m = imp.load_source('content_filter', _content_filter_script)
+                self.filter = _m.content_filter
+            elif config.has_option(section, 'CONTENT_FILTER_COMMAND'):
+                _filter_command = config.get(section, 'CONTENT_FILTER_COMMAND')
+                self.__filter_process = subprocess.Popen(_filter_command.split(), stdin=PIPE, stdout=PIPE)
+
+                def __filter(line):
+                    self.__filter_process.stdin.write(line)
+                    _line = self.__filter_process.stdout.readline()
+                    if _line.strip() == '':
+                        return None
+                    return _line
+                self.filter = __filter
+            else:
+                self.filter = None
         except:
             self.logger.error(traceback.format_exc())
             exit(-1)

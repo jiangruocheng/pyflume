@@ -6,9 +6,10 @@ import signal
 import logging
 import traceback
 import imp
+import subprocess
 
 from socket import socket, error, AF_INET, SOCK_STREAM
-from configparser import NoOptionError
+from subprocess import PIPE
 
 
 class SocketPoll(object):
@@ -21,12 +22,26 @@ class SocketPoll(object):
         self.ip = config.get(section, 'LISTEN_IP')
         self.port = int(config.get(section, 'LISTEN_PORT'))
         self.max_clients = config.get(section, 'MAX_CLIENTS')
+        if config.has_option(section, 'CONTENT_FILTER_SCRIPT') and config.has_option(section, 'CONTENT_FILTER_COMMAND'):
+            raise Exception('Duplicate content filter: [CONTENT_FILTER_SCRIPT, CONTENT_FILTER_COMMAND]')
         try:
-            _content_filter_script = config.get(section, 'CONTENT_FILTER_SCRIPT')
-            _m = imp.load_source('content_filter', _content_filter_script)
-            self.filter = _m.content_filter
-        except NoOptionError:
-            self.filter = None
+            if config.has_option(section, 'CONTENT_FILTER_SCRIPT'):
+                _content_filter_script = config.get(section, 'CONTENT_FILTER_SCRIPT')
+                _m = imp.load_source('content_filter', _content_filter_script)
+                self.filter = _m.content_filter
+            elif config.has_option(section, 'CONTENT_FILTER_COMMAND'):
+                _filter_command = config.get(section, 'CONTENT_FILTER_COMMAND')
+                self.__filter_process = subprocess.Popen(_filter_command.split(), stdin=PIPE, stdout=PIPE)
+
+                def __filter(line):
+                    self.__filter_process.stdin.write(line)
+                    _line = self.__filter_process.stdout.readline()
+                    if _line.strip() == '':
+                        return None
+                    return _line
+                self.filter = __filter
+            else:
+                self.filter = None
         except:
             self.logger.error(traceback.format_exc())
             exit(-1)
