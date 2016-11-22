@@ -115,8 +115,8 @@ class AgentBase(object):
 
     def msg_join(self, filename, data):
         msg = dict()
-        msg['collector'] = self.collector_name
-        msg['filename'] = filename
+        msg['collector'] = self.collector_name.encode('utf-8')
+        msg['filename'] = filename.encode('utf-8')
         msg['data'] = data
         return msg
 
