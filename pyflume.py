@@ -17,9 +17,9 @@ import configparser
 from logging.handlers import TimedRotatingFileHandler
 from multiprocessing import Process, Queue
 
-from channel import ChannelProxy
-from agent import AgentProxy
-from collector import CollectorProxy
+from pyflumes.channel import ChannelProxy
+from pyflumes.agent import AgentProxy
+from pyflumes.collector import CollectorProxy
 
 
 class Pyflume(object):
@@ -40,7 +40,7 @@ class Pyflume(object):
         for _pid in self.pids:
             try:
                 os.kill(_pid, signal.SIGTERM)
-                time.sleep(1)
+                time.sleep(2)
             except:
                 pass
 
