@@ -2,21 +2,20 @@
 
 import re
 import os
+import imp
 import signal
 import select
 import pickle
 import logging
 import platform
-import threading
 import traceback
-import imp
 import subprocess
 
 from errno import EINTR
-from time import sleep
 from subprocess import PIPE
 
-from wrappers import pickle_lock
+from pyflumes.wrappers import pickle_lock
+from pyflumes.polls.kq import WATCHDOG_KQ_FILTER, WATCHDOG_KQ_EV_FLAGS, WATCHDOG_KQ_FFLAGS
 
 
 class FilePollBase(object):
@@ -157,6 +156,9 @@ if platform.system() == 'Linux':
             self.__monitor_dict = dict()
 
         def monitor_file(self):
+
+            signal.signal(signal.SIGTERM, self.exit)
+
             try:
                 self.handlers = self.get_handlers()
                 self._load_pickle()
@@ -174,7 +176,7 @@ if platform.system() == 'Linux':
                         if not _data:
                             break
                         for _line in _data:
-                            msg = self.msg_join(filename=_in_process_file_handler.name, data=_line)
+
                             if msg:
                                 self.channel.put(msg)
                             # 数据完整性由collector来保证
@@ -234,73 +236,61 @@ if platform.system() == 'Linux':
     SystemPoll = InotifyPoll
 
 elif platform.system() == 'Darwin':
-    from select import KQ_FILTER_SIGNAL, KQ_FILTER_READ, KQ_EV_ADD
+    from select import KQ_FILTER_READ, KQ_FILTER_SIGNAL
 
     class KqueuePoll(FilePollBase):
         def __init__(self, config, section):
             super(KqueuePoll, self).__init__(config, section)
-            self.exit_flag_0 = False
-            self.exit_flag_1 = False
+
+        def on_file_read(self, event):
+            return event.filter == select.KQ_FILTER_READ
+
+        def on_directory_write(self, event):
+            return event.fflags & select.KQ_NOTE_WRITE
+
+        def on_directory_deleted(self, event):
+            return event.fflags & select.KQ_NOTE_DELETE
+
+        def on_directory_renamed(self, event):
+            return event.fflags & select.KQ_NOTE_RENAME
+
+        def on_signal_terminate(self, event):
+            return event.filter == select.KQ_FILTER_SIGNAL \
+                   and event.ident == signal.SIGTERM
+
+        def clean_handlers(self):
+            for _handler in self.handlers:
+                _handler.close()
+            self.pickle_handler.close()
 
         def monitor_file(self):
-            _thread_move = threading.Thread(target=self.monitor_file_move, name='monitor_file_move')
-            _thread_content = threading.Thread(target=self.monitor_file_content, name='monitor_file_content')
-
-            _thread_move.start()
-            _thread_content.start()
-
-            while self.exit_flag_0 is False or self.exit_flag_1 is False:
-                sleep(60)  # 等待信号
-
-        def monitor_file_move(self):
-            _is_first_time = True
-            before_directories = set()
 
             while not self.exit_flag:
                 try:
-                    after_directories = set(os.listdir(self.pool_path))
-                    xor_set = after_directories ^ before_directories
-                    if _is_first_time:
-                        # 加入此判断是为防止pyflume启动时，pickle不为空导致数据重复导入
-                        before_directories = after_directories
-                        _is_first_time = False
-                        continue
-                    if xor_set:
-                        xor_set_list = [os.path.join(self.pool_path, name) for name in xor_set]
-                        self._reset_pickle(xor_set_list)
-                        os.kill(self.pid, signal.SIGUSR1)
-                        before_directories = after_directories
-                        self.logger.debug('[{}]'.format(self.name) + str(xor_set) + 'These files are added or deleted;')
-                except:
-                    self.logger.error(traceback.format_exc())
-
-                sleep(10)
-            self.logger.info('File move monitor leave.')
-            self.exit_flag_0 = True
-
-        def monitor_file_content(self):
-
-            while not self.exit_flag:
-                try:
+                    pool_path_handler = os.open(self.pool_path, 0x8000)
                     break_flag = True
+                    before_directories = set(os.listdir(self.pool_path))
                     self.handlers = self.get_handlers()
                     self._load_pickle()
                     kq = select.kqueue()
-                    _monitor_list = list()
+                    _monitor_list = [select.kevent(pool_path_handler,
+                                                   filter=WATCHDOG_KQ_FILTER,
+                                                   flags=WATCHDOG_KQ_EV_FLAGS,
+                                                   fflags=WATCHDOG_KQ_FFLAGS)]
                     _monitor_dict = dict()
                     for _handler in self.handlers:
                         _monitor_list.append(
-                            select.kevent(_handler.fileno(), filter=KQ_FILTER_READ, flags=KQ_EV_ADD)
+                            select.kevent(_handler.fileno(), filter=KQ_FILTER_READ, flags=WATCHDOG_KQ_EV_FLAGS)
                         )
                         _monitor_dict[_handler.fileno()] = _handler
                     _monitor_list.append(
-                        select.kevent(signal.SIGUSR1, filter=KQ_FILTER_SIGNAL, flags=KQ_EV_ADD)
+                        select.kevent(signal.SIGTERM, filter=KQ_FILTER_SIGNAL, flags=WATCHDOG_KQ_EV_FLAGS)
                     )
-                    # 此时另一个线程负责监控文件的变动,例如新文件的移入,另一个线程会发送信号终止这个循环,重新遍历获取所有文件的句柄.
+                    print _monitor_list
                     while break_flag:
-                        revents = kq.control(_monitor_list, 16)
+                        revents = kq.control(_monitor_list, 64)
                         for event in revents:
-                            if event.filter == select.KQ_FILTER_READ:
+                            if self.on_file_read(event):
                                 _in_process_file_handler = _monitor_dict[event.ident]
                                 _data = self._get_log_data_by_handler(_in_process_file_handler)
                                 if not _data:
@@ -312,26 +302,30 @@ elif platform.system() == 'Darwin':
                                             self.channel.put(msg)
                                 # 数据完整性由collector来保证
                                 self._update_pickle(_in_process_file_handler)
-                            elif event.filter == select.KQ_FILTER_SIGNAL:
-                                if event.ident == signal.SIGUSR1:
-                                    self.logger.info(u'[{}]捕捉到信号SIGUSR1'.format(self.name))
-                                    # 关闭文件句柄，避免过量问题
-                                    for _handler in self.handlers:
-                                        _handler.close()
-                                    break_flag = False
+                            elif self.on_directory_write(event):
+                                after_directories = set(os.listdir(self.pool_path))
+                                xor_set = after_directories ^ before_directories
+                                if xor_set:
+                                    xor_set_list = [os.path.join(self.pool_path, name) for name in xor_set]
+                                    self._reset_pickle(xor_set_list)
+                                    before_directories = after_directories
+                                    self.logger.debug('[{}]'.format(self.name)
+                                                      + str(xor_set)
+                                                      + 'These files are added or deleted;')
+                                break_flag = False
+                            elif self.on_directory_deleted(event) or self.on_directory_renamed(event):
+                                self._reset_pickle([_handler.name for _handler in self.handlers])
+                                self.clean_handlers()
+                                os.close(pool_path_handler)
+                            elif self.on_signal_terminate(event):
+                                self.exit_flag = True
+                                break_flag = False
+                                self.logger.info('Received sigterm, agent[{}] is going down.'.format(self.name))
                 except Exception:
                     self.logger.error(traceback.format_exc())
-                    sleep(30)
                 finally:
-                    self.pickle_handler.close()
-
-            self.logger.info('File content monitor leave.')
-            self.exit_flag_1 = True
-
-        def exit(self, *args, **kwargs):
-            self.logger.info('Received sigterm, agent[{}] is going down.'.format(self.name))
-            self.exit_flag = True
-            os.kill(self.pid, signal.SIGUSR1)
+                    self.clean_handlers()
+                    os.close(pool_path_handler)
 
     SystemPoll = KqueuePoll
 
@@ -356,6 +350,5 @@ class FilePoll(SystemPoll):
         self.logger.debug('agent[{}] pid: '.format(self.name) + str(self.pid))
         self.logger.info('Pyflume agent[{}] starts.'.format(self.name))
 
-        signal.signal(signal.SIGTERM, self.exit)
         self.monitor_file()
         self.logger.info('Pyflume agent[{}] ends.'.format(self.name))
