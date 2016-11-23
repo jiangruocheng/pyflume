@@ -33,6 +33,8 @@ class FilePollBase(object):
         self.pid = None
         self.exit_flag = False
         self.name = ''
+        self.__monitor_dict = dict()
+
         if config.has_option(section, 'CONTENT_FILTER_SCRIPT') and config.has_option(section, 'CONTENT_FILTER_COMMAND'):
             raise Exception('Duplicate content filter: [CONTENT_FILTER_SCRIPT, CONTENT_FILTER_COMMAND]')
         try:
@@ -128,6 +130,22 @@ class FilePollBase(object):
 
         return handlers
 
+    def pre_process(self):
+        # 预处理，先处理已有的数据
+        for _in_process_file_handler in self.handlers:
+            self.__monitor_dict[_in_process_file_handler.name] = _in_process_file_handler
+            file_size = os.path.getsize(_in_process_file_handler.name)
+            while _in_process_file_handler.tell() < file_size:
+                _data = self._get_log_data_by_handler(_in_process_file_handler)
+                if not _data:
+                    break
+                for _line in _data:
+                    msg = self.msg_join(filename=_in_process_file_handler.name, data=_line)
+                    if msg:
+                        self.channel.put(msg)
+                        # 数据完整性由collector来保证
+                self._update_pickle(_in_process_file_handler)
+
     def clean_handlers(self):
         for _handler in self.handlers:
             _handler.close()
@@ -157,7 +175,6 @@ if platform.system() == 'Linux':
     class InotifyPoll(FilePollBase):
         def __init__(self, config, section):
             super(InotifyPoll, self).__init__(config, section)
-            self.__monitor_dict = dict()
             self.inotify = None
             self._break_flag = True
 
@@ -256,23 +273,6 @@ if platform.system() == 'Linux':
                 self.inotify.remove_watch(parent_path)
                 self.logger.debug('stop waiting for pool_path to be created')
 
-        def pre_process(self):
-
-            # 预处理，先处理已有的数据
-            for _in_process_file_handler in self.handlers:
-                self.__monitor_dict[_in_process_file_handler.name] = _in_process_file_handler
-                file_size = os.path.getsize(_in_process_file_handler.name)
-                while _in_process_file_handler.tell() < file_size:
-                    _data = self._get_log_data_by_handler(_in_process_file_handler)
-                    if not _data:
-                        break
-                    for _line in _data:
-                        msg = self.msg_join(filename=_in_process_file_handler.name, data=_line)
-                        if msg:
-                            self.channel.put(msg)
-                            # 数据完整性由collector来保证
-                    self._update_pickle(_in_process_file_handler)
-
         def exit(self, *args, **kwargs):
             self.logger.info('Received sigterm, agent[{}] is going down.'.format(self.name))
             self.exit_flag = True
@@ -307,6 +307,8 @@ elif platform.system() == 'Darwin':
 
             while not self.exit_flag:
                 try:
+                    self.pre_process()
+
                     pool_path_handler = os.open(self.pool_path, 0x8000)
                     break_flag = True
                     before_directories = set(os.listdir(self.pool_path))
@@ -317,12 +319,11 @@ elif platform.system() == 'Darwin':
                                                    filter=WATCHDOG_KQ_FILTER,
                                                    flags=WATCHDOG_KQ_EV_FLAGS,
                                                    fflags=WATCHDOG_KQ_FFLAGS)]
-                    _monitor_dict = dict()
                     for _handler in self.handlers:
                         _monitor_list.append(
                             select.kevent(_handler.fileno(), filter=KQ_FILTER_READ, flags=WATCHDOG_KQ_EV_FLAGS)
                         )
-                        _monitor_dict[_handler.fileno()] = _handler
+                        self._monitor_dict[_handler.fileno()] = _handler
                     _monitor_list.append(
                         select.kevent(signal.SIGTERM, filter=KQ_FILTER_SIGNAL, flags=WATCHDOG_KQ_EV_FLAGS)
                     )
@@ -330,7 +331,7 @@ elif platform.system() == 'Darwin':
                         revents = kq.control(_monitor_list, 64)
                         for event in revents:
                             if self.on_file_read(event):
-                                _in_process_file_handler = _monitor_dict[event.ident]
+                                _in_process_file_handler = self._monitor_dict[event.ident]
                                 _data = self._get_log_data_by_handler(_in_process_file_handler)
                                 if not _data:
                                     continue
