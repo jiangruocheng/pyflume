@@ -57,7 +57,15 @@ class Pyflume(object):
         self.pids += self.agent.pids
         self.processes += self.agent.processes
 
-        signal.pause()
+        flag = True
+        while flag:
+            time.sleep(30)
+            for _p in self.processes:
+                if not _p.is_alive():
+                    self.log.warning(_p.name + ' is not alive.')
+                    self.kill()
+                    flag = False
+                    break
 
         for _process in self.processes:
             _process.join()
