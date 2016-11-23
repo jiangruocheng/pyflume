@@ -15,7 +15,6 @@ from errno import EINTR
 from subprocess import PIPE
 
 from pyflumes.wrappers import pickle_lock
-from pyflumes.polls.kq import WATCHDOG_KQ_FILTER, WATCHDOG_KQ_EV_FLAGS, WATCHDOG_KQ_FFLAGS
 
 
 class FilePollBase(object):
@@ -129,6 +128,11 @@ class FilePollBase(object):
 
         return handlers
 
+    def clean_handlers(self):
+        for _handler in self.handlers:
+            _handler.close()
+        self.pickle_handler.close()
+
     def is_need_monitor(self, filename):
         if self.filename_pattern.match(filename):
             return True
@@ -148,61 +152,63 @@ class FilePollBase(object):
 
 if platform.system() == 'Linux':
     from inotify import Inotify
-    from inotify import IN_CREATE, IN_MOVED_FROM, IN_MOVED_TO, IN_MODIFY, IN_DELETE
+    from inotify import IN_CREATE, IN_MOVED_FROM, IN_MOVED_TO, IN_MODIFY, IN_DELETE, IN_DELETE_SELF
 
     class InotifyPoll(FilePollBase):
         def __init__(self, config, section):
             super(InotifyPoll, self).__init__(config, section)
             self.__monitor_dict = dict()
+            self.inotify = None
+            self._break_flag = True
+
+        def on_file_modify(self, event):
+            return event & IN_MODIFY
+
+        def on_file_remove(self, event):
+            return event & IN_DELETE | event & IN_MOVED_FROM
+
+        def on_file_new(self, event):
+            return event & IN_CREATE | event & IN_MOVED_TO
+
+        def on_directory_delete(self, event):
+            return event & IN_DELETE_SELF
 
         def monitor_file(self):
 
             signal.signal(signal.SIGTERM, self.exit)
 
-            try:
-                self.handlers = self.get_handlers()
-                self._load_pickle()
-                _inotify = Inotify()
-                _inotify.add_watch(self.pool_path, IN_CREATE | IN_MOVED_FROM | IN_MOVED_TO |
-                                   IN_MODIFY | IN_DELETE)
-                _epoll = select.epoll()
-                _epoll.register(_inotify.fileno(), select.EPOLLIN)
+            while not self.exit_flag:
+                try:
+                    self.handlers = self.get_handlers()
+                    self._load_pickle()
+                    self.inotify = Inotify()
+                    self.inotify.add_watch(self.pool_path, IN_CREATE | IN_MOVED_FROM | IN_MOVED_TO |
+                                           IN_MODIFY | IN_DELETE | IN_DELETE_SELF)
+                    _epoll = select.epoll()
+                    _epoll.register(self.inotify.fileno(), select.EPOLLIN)
 
-                for _in_process_file_handler in self.handlers:
-                    self.__monitor_dict[_in_process_file_handler.name] = _in_process_file_handler
-                    file_size = os.path.getsize(_in_process_file_handler.name)
-                    while _in_process_file_handler.tell() < file_size:
-                        _data = self._get_log_data_by_handler(_in_process_file_handler)
-                        if not _data:
-                            break
-                        for _line in _data:
+                    self.pre_process()
 
-                            if msg:
-                                self.channel.put(msg)
-                            # 数据完整性由collector来保证
-                        self._update_pickle(_in_process_file_handler)
-
-                while not self.exit_flag:
-                    try:
-                        for fd, epoll_event in _epoll.poll(-1):
-                            if fd == _inotify.fileno():
-                                for inotify_event in _inotify.read_events():
-                                    self.process_event(inotify_event)
-                                    if self.exit_flag:
-                                        break
-                    except IOError as e:
-                        if e.errno == EINTR:
-                            continue
-                        raise e
-            except Exception:
-                self.logger.error(traceback.format_exc())
-                exit(-1)
-            finally:
-                self.pickle_handler.close()
+                    self._break_flag = True
+                    while not self.exit_flag and self._break_flag:
+                        try:
+                            for fd, epoll_event in _epoll.poll(-1):
+                                if fd == self.inotify.fileno():
+                                    for inotify_event in self.inotify.read_events():
+                                        self.process_event(inotify_event)
+                        except IOError as e:
+                            if e.errno != EINTR:
+                                raise e
+                except Exception:
+                    self.logger.error(traceback.format_exc())
+                    exit(-1)
+                finally:
+                    self.clean_handlers()
+                    _epoll.close()
 
         def process_event(self, inotify_event):
             (watch_path, mask, cookie, filename) = inotify_event
-            if mask & IN_CREATE or mask & IN_MOVED_TO:
+            if self.on_file_new(mask):
                 if self.is_need_monitor(filename):
                     full_filename = os.path.join(watch_path, filename)
                     if os.path.isfile(full_filename):
@@ -210,7 +216,7 @@ if platform.system() == 'Linux':
                         self.__monitor_dict[full_filename] = _new_file_handler
                         self.handlers.append(_new_file_handler)
                         self._update_pickle(_new_file_handler)
-            elif mask & IN_MODIFY:
+            elif self.on_file_modify(mask):
                 _in_process_file_handler = self.__monitor_dict.get(os.path.join(watch_path, filename))
                 if _in_process_file_handler:
                     _data = self._get_log_data_by_handler(_in_process_file_handler)
@@ -221,13 +227,51 @@ if platform.system() == 'Linux':
                                 self.channel.put(msg)
                             # 数据完整性由collector来保证
                         self._update_pickle(_in_process_file_handler)
-            elif mask & IN_DELETE or mask & IN_MOVED_FROM:
+            elif self.on_file_remove(mask):
                 _delete_file_handler = self.__monitor_dict.get(os.path.join(watch_path, filename))
                 if _delete_file_handler:
                     self.__monitor_dict.pop(os.path.join(watch_path, filename))
                     _delete_file_handler.close()
                     self.handlers.remove(_delete_file_handler)
                     self._reset_pickle([_delete_file_handler.name])
+            elif self.on_directory_delete(mask):
+                parent_path = os.path.normpath(os.path.join(self.pool_path, os.pardir))
+                basename = os.path.basename(os.path.normpath(self.pool_path))
+                self.inotify.remove_watch(self.pool_path)
+                self.inotify.add_watch(parent_path, IN_CREATE | IN_MOVED_TO)
+                self.logger.debug('pool_path is deleted, waiting for pool_path to be created')
+                wait_flag = False if os.path.exists(self.pool_path) else True
+                while not self.exit_flag and wait_flag:
+                    try:
+                        for self.inotify_event in self.inotify.read_events():
+                            (watch_path, mask, cookie, filename) = self.inotify_event
+                            if filename == basename:
+                                self.inotify.add_watch(self.pool_path, IN_CREATE | IN_MOVED_FROM | IN_MOVED_TO |
+                                                       IN_MODIFY | IN_DELETE | IN_DELETE_SELF)
+                                wait_flag = False
+                    except IOError as e:
+                        if e.errno != EINTR:
+                            raise e
+                self._break_flag = False
+                self.inotify.remove_watch(parent_path)
+                self.logger.debug('stop waiting for pool_path to be created')
+
+        def pre_process(self):
+
+            # 预处理，先处理已有的数据
+            for _in_process_file_handler in self.handlers:
+                self.__monitor_dict[_in_process_file_handler.name] = _in_process_file_handler
+                file_size = os.path.getsize(_in_process_file_handler.name)
+                while _in_process_file_handler.tell() < file_size:
+                    _data = self._get_log_data_by_handler(_in_process_file_handler)
+                    if not _data:
+                        break
+                    for _line in _data:
+                        msg = self.msg_join(filename=_in_process_file_handler.name, data=_line)
+                        if msg:
+                            self.channel.put(msg)
+                            # 数据完整性由collector来保证
+                    self._update_pickle(_in_process_file_handler)
 
         def exit(self, *args, **kwargs):
             self.logger.info('Received sigterm, agent[{}] is going down.'.format(self.name))
@@ -237,6 +281,7 @@ if platform.system() == 'Linux':
 
 elif platform.system() == 'Darwin':
     from select import KQ_FILTER_READ, KQ_FILTER_SIGNAL
+    from pyflumes.polls.kq import WATCHDOG_KQ_FILTER, WATCHDOG_KQ_EV_FLAGS, WATCHDOG_KQ_FFLAGS
 
     class KqueuePoll(FilePollBase):
         def __init__(self, config, section):
@@ -257,11 +302,6 @@ elif platform.system() == 'Darwin':
         def on_signal_terminate(self, event):
             return event.filter == select.KQ_FILTER_SIGNAL \
                    and event.ident == signal.SIGTERM
-
-        def clean_handlers(self):
-            for _handler in self.handlers:
-                _handler.close()
-            self.pickle_handler.close()
 
         def monitor_file(self):
 
@@ -286,7 +326,6 @@ elif platform.system() == 'Darwin':
                     _monitor_list.append(
                         select.kevent(signal.SIGTERM, filter=KQ_FILTER_SIGNAL, flags=WATCHDOG_KQ_EV_FLAGS)
                     )
-                    print _monitor_list
                     while break_flag:
                         revents = kq.control(_monitor_list, 64)
                         for event in revents:
@@ -317,6 +356,7 @@ elif platform.system() == 'Darwin':
                                 self._reset_pickle([_handler.name for _handler in self.handlers])
                                 self.clean_handlers()
                                 os.close(pool_path_handler)
+                                break_flag = False
                             elif self.on_signal_terminate(event):
                                 self.exit_flag = True
                                 break_flag = False

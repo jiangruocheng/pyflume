@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 import os
 import struct
-from errno import EINTR
+from errno import EINTR, EINVAL
 from ctypes import CDLL, CFUNCTYPE, c_int, c_char_p, c_uint32, get_errno
 
 _libc = CDLL("libc.so.6")
@@ -38,7 +38,11 @@ class Inotify(object):
         if wd:
             self.__path_to_wd.pop(path)
             self.__wd_to_path.pop(wd)
-            _inotify_rm_watch(self.__fd, wd)
+            try:
+                _inotify_rm_watch(self.__fd, wd)
+            except OSError as e:
+                if e.errno != EINVAL:
+                    raise e
 
     def read_events(self, n=1024):
         """
@@ -63,7 +67,9 @@ class Inotify(object):
             if i + _iIII_length + length > buffer_length:
                 break
             name = self.__buffer[i + _iIII_length:i + _iIII_length + length].rstrip(b'\0')
-            events.append((self.__wd_to_path[wd], mask, cookie, name))
+            watch_path = self.__wd_to_path.get(wd)
+            if watch_path:
+                events.append((watch_path, mask, cookie, name))
             i += _iIII_length + length
 
         self.__buffer = self.__buffer[i:]
