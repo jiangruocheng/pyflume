@@ -1,6 +1,7 @@
 #! -*- coding:utf-8 -*-
 
 import sys
+import time
 import logging
 import traceback
 
@@ -18,7 +19,7 @@ class Collector(object):
         self.channel = None
 
     def process_data(self, msg):
-        sys.stdout.write(msg['data'])
+        sys.stdout.write(str(msg))
         sys.stdout.flush()
 
     def run(self, *args, **kwargs):

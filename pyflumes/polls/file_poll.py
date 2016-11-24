@@ -33,7 +33,7 @@ class FilePollBase(object):
         self.pid = None
         self.exit_flag = False
         self.name = ''
-        self.__monitor_dict = dict()
+        self.monitor_dict = dict()
 
         if config.has_option(section, 'CONTENT_FILTER_SCRIPT') and config.has_option(section, 'CONTENT_FILTER_COMMAND'):
             raise Exception('Duplicate content filter: [CONTENT_FILTER_SCRIPT, CONTENT_FILTER_COMMAND]')
@@ -133,7 +133,7 @@ class FilePollBase(object):
     def pre_process(self):
         # 预处理，先处理已有的数据
         for _in_process_file_handler in self.handlers:
-            self.__monitor_dict[_in_process_file_handler.name] = _in_process_file_handler
+            self.monitor_dict[_in_process_file_handler.name] = _in_process_file_handler
             file_size = os.path.getsize(_in_process_file_handler.name)
             while _in_process_file_handler.tell() < file_size:
                 _data = self._get_log_data_by_handler(_in_process_file_handler)
@@ -148,8 +148,14 @@ class FilePollBase(object):
 
     def clean_handlers(self):
         for _handler in self.handlers:
-            _handler.close()
-        self.pickle_handler.close()
+            try:
+                _handler.close()
+            except:
+                pass
+        try:
+            self.pickle_handler.close()
+        except:
+            pass
 
     def is_need_monitor(self, filename):
         if self.filename_pattern.match(filename):
@@ -230,11 +236,11 @@ if platform.system() == 'Linux':
                     full_filename = os.path.join(watch_path, filename)
                     if os.path.isfile(full_filename):
                         _new_file_handler = open(full_filename, 'r')
-                        self.__monitor_dict[full_filename] = _new_file_handler
+                        self.monitor_dict[full_filename] = _new_file_handler
                         self.handlers.append(_new_file_handler)
                         self._update_pickle(_new_file_handler)
             elif self.on_file_modify(mask):
-                _in_process_file_handler = self.__monitor_dict.get(os.path.join(watch_path, filename))
+                _in_process_file_handler = self.monitor_dict.get(os.path.join(watch_path, filename))
                 if _in_process_file_handler:
                     _data = self._get_log_data_by_handler(_in_process_file_handler)
                     if _data:
@@ -245,9 +251,9 @@ if platform.system() == 'Linux':
                             # 数据完整性由collector来保证
                         self._update_pickle(_in_process_file_handler)
             elif self.on_file_remove(mask):
-                _delete_file_handler = self.__monitor_dict.get(os.path.join(watch_path, filename))
+                _delete_file_handler = self.monitor_dict.get(os.path.join(watch_path, filename))
                 if _delete_file_handler:
-                    self.__monitor_dict.pop(os.path.join(watch_path, filename))
+                    self.monitor_dict.pop(os.path.join(watch_path, filename))
                     _delete_file_handler.close()
                     self.handlers.remove(_delete_file_handler)
                     self._reset_pickle([_delete_file_handler.name])
@@ -307,8 +313,6 @@ elif platform.system() == 'Darwin':
 
             while not self.exit_flag:
                 try:
-                    self.pre_process()
-
                     pool_path_handler = os.open(self.pool_path, 0x8000)
                     break_flag = True
                     before_directories = set(os.listdir(self.pool_path))
@@ -323,15 +327,18 @@ elif platform.system() == 'Darwin':
                         _monitor_list.append(
                             select.kevent(_handler.fileno(), filter=KQ_FILTER_READ, flags=WATCHDOG_KQ_EV_FLAGS)
                         )
-                        self._monitor_dict[_handler.fileno()] = _handler
+                        self.monitor_dict[_handler.fileno()] = _handler
                     _monitor_list.append(
                         select.kevent(signal.SIGTERM, filter=KQ_FILTER_SIGNAL, flags=WATCHDOG_KQ_EV_FLAGS)
                     )
+
+                    self.pre_process()
+
                     while break_flag:
                         revents = kq.control(_monitor_list, 64)
                         for event in revents:
                             if self.on_file_read(event):
-                                _in_process_file_handler = self._monitor_dict[event.ident]
+                                _in_process_file_handler = self.monitor_dict[event.ident]
                                 _data = self._get_log_data_by_handler(_in_process_file_handler)
                                 if not _data:
                                     continue
@@ -356,7 +363,6 @@ elif platform.system() == 'Darwin':
                             elif self.on_directory_deleted(event) or self.on_directory_renamed(event):
                                 self._reset_pickle([_handler.name for _handler in self.handlers])
                                 self.clean_handlers()
-                                os.close(pool_path_handler)
                                 break_flag = False
                             elif self.on_signal_terminate(event):
                                 self.exit_flag = True
