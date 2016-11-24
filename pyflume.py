@@ -14,12 +14,12 @@ import logging
 import argparse
 import configparser
 
-from logging.handlers import TimedRotatingFileHandler
 from multiprocessing import Process, Queue
 
 from pyflumes.channel import ChannelProxy
 from pyflumes.agent import AgentProxy
 from pyflumes.collector import CollectorProxy
+from pyflumes.logger import MyTimedRotatingFileHandler
 
 
 class Pyflume(object):
@@ -90,7 +90,7 @@ def start():
         sys.exit(0)
 
     log_path = config.get('LOG', 'LOG_FILE')
-    handler = TimedRotatingFileHandler(log_path, "midnight", 1)
+    handler = MyTimedRotatingFileHandler(log_path, "midnight", 1)
     formatter = '%(asctime)s - %(filename)s:%(lineno)s - %(levelname)s - %(name)s - %(message)s'
     handler.setFormatter(logging.Formatter(formatter))
     level = logging.DEBUG if config.get('LOG', 'DEBUG') == 'True' else logging.ERROR
