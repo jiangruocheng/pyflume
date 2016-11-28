@@ -14,6 +14,7 @@ class SocketPoll(PollBase):
     """从socket客户端收集日志"""
 
     def __init__(self, config, section):
+        super(SocketPoll, self).__init__(config, section)
         self.ip = config.get(section, 'LISTEN_IP')
         self.port = int(config.get(section, 'LISTEN_PORT'))
         self.max_clients = config.get(section, 'MAX_CLIENTS')
