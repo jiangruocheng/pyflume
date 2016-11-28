@@ -19,7 +19,7 @@ class KafkaCollector(Collector):
 
     def process_data(self, msg):
         _data = msg['filename'] + ': ' + msg['data']
-        self.log.debug(msg['collector'] + _data)
+        self.log.debug(msg['collectors'] + _data)
 
         self.producer = KafkaProducer(bootstrap_servers=self.kfk_server)
 
