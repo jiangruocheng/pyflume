@@ -2,31 +2,25 @@
 
 import re
 import os
-import imp
 import signal
 import select
 import pickle
-import logging
 import platform
 import traceback
-import subprocess
 
 from errno import EINTR
-from subprocess import PIPE
 
 from pyflumes.wrappers import pickle_lock
+from pyflumes.polls.base import PollBase
 
 
-class FilePollBase(object):
+class FilePollBase(PollBase):
 
     def __init__(self, config, section):
-        self.logger = logging.getLogger(config.get('LOG', 'LOG_HANDLER'))
+        super(FilePollBase, self).__init__(config, section)
         self.pickle_File = config.get(section, 'PICKLE_FILE')
         self.pool_path = config.get(section, 'POOL_PATH')
         self.filename_pattern = re.compile(config.get(section, 'FILENAME_PATTERN'))
-        self.channel_name = config.get(section, 'CHANNEL')
-        self.channel = None
-        self.collector_name = config.get(section, 'COLLECTOR')
         self.pickle_handler = None
         self.pickle_data = None
         self.handlers = list()
@@ -35,65 +29,41 @@ class FilePollBase(object):
         self.name = ''
         self.monitor_dict = dict()
 
-        if config.has_option(section, 'CONTENT_FILTER_SCRIPT') and config.has_option(section, 'CONTENT_FILTER_COMMAND'):
-            raise Exception('Duplicate content filter: [CONTENT_FILTER_SCRIPT, CONTENT_FILTER_COMMAND]')
-        try:
-            if config.has_option(section, 'CONTENT_FILTER_SCRIPT'):
-                _content_filter_script = config.get(section, 'CONTENT_FILTER_SCRIPT')
-                _m = imp.load_source('content_filter', _content_filter_script)
-                self.filter = _m.content_filter
-            elif config.has_option(section, 'CONTENT_FILTER_COMMAND'):
-                _filter_command = config.get(section, 'CONTENT_FILTER_COMMAND')
-                self.__filter_process = subprocess.Popen(_filter_command.split(), stdin=PIPE, stdout=PIPE)
-
-                def __filter(line):
-                    self.__filter_process.stdin.write(line)
-                    _line = self.__filter_process.stdout.readline()
-                    if _line.strip() == '':
-                        return None
-                    return _line
-                self.filter = __filter
-            else:
-                self.filter = None
-        except:
-            self.logger.error(traceback.format_exc())
-            exit(-1)
-
     @pickle_lock
     def _load_pickle(self):
         if not os.path.exists(self.pickle_File):
             try:
                 self.pickle_handler = open(self.pickle_File, 'w+')
             except IOError:
-                self.logger.error(traceback.format_exc())
+                self.log.error(traceback.format_exc())
                 exit(-1)
 
         self.pickle_handler = open(self.pickle_File, 'r+')
         try:
             self.pickle_data = pickle.load(self.pickle_handler)
-            self.logger.debug('[{}]load pickle_data:'.format(self.name) + str(self.pickle_data))
+            self.log.debug('[{}]load pickle_data:'.format(self.name) + str(self.pickle_data))
         except EOFError:
-            self.logger.warning('[{}]No pickle data exits.'.format(self.name))
+            self.log.warning('[{}]No pickle data exits.'.format(self.name))
             self.pickle_data = dict()
 
     @pickle_lock
     def _update_pickle(self, file_handler):
-        self.logger.debug('[{}]before update pickle_data:'.format(self.name) + str(self.pickle_data))
+        self.log.debug('[{}]before update pickle_data:'.format(self.name) + str(self.pickle_data))
         # 数据已成功采集,更新offset
         self.pickle_data[file_handler.name] = file_handler.tell()
-        self.logger.debug('[{}]after update pickle_data:'.format(self.name) + str(self.pickle_data))
+        self.log.debug('[{}]after update pickle_data:'.format(self.name) + str(self.pickle_data))
         # 从文件读取pickle_data时offset已经改变,现在重置到0
         self.pickle_handler.seek(0)
         pickle.dump(self.pickle_data, self.pickle_handler)
 
     @pickle_lock
     def _reset_pickle(self, file_names):
-        self.logger.debug('[{}]before reset pickle_data:'.format(self.name) + str(self.pickle_data))
+        self.log.debug('[{}]before reset pickle_data:'.format(self.name) + str(self.pickle_data))
         for name in file_names:
             self.pickle_data[name] = 0
             self.pickle_handler.seek(0)
             pickle.dump(self.pickle_data, self.pickle_handler)
-        self.logger.debug('[{}]after reset pickle_data:'.format(self.name) + str(self.pickle_data))
+        self.log.debug('[{}]after reset pickle_data:'.format(self.name) + str(self.pickle_data))
 
     @pickle_lock
     def _get_pickle_data(self, file_name):
@@ -106,7 +76,7 @@ class FilePollBase(object):
         try:
             _offset = self._get_pickle_data(_file_name)
         except KeyError:
-            self.logger.warning('[{}]Cant find "%s" in pickles.'.format(self.name) % _file_name)
+            self.log.warning('[{}]Cant find "%s" in pickles.'.format(self.name) % _file_name)
             _offset = 0
         handler.seek(_offset)
         _data = handler.readlines()
@@ -125,7 +95,7 @@ class FilePollBase(object):
                         _handler = open(os.path.join(self.pool_path, _file), 'r')
                         handlers.append(_handler)
                     except IOError:
-                        self.logger.error(traceback.format_exc())
+                        self.log.error(traceback.format_exc())
                         return []
 
         return handlers
@@ -140,7 +110,7 @@ class FilePollBase(object):
                 if not _data:
                     break
                 for _line in _data:
-                    msg = self.msg_join(filename=_in_process_file_handler.name, data=_line)
+                    msg = self.reformate(filename=_in_process_file_handler.name, data=_line)
                     if msg:
                         self.channel.put(msg)
                         # 数据完整性由collector来保证
@@ -162,13 +132,13 @@ class FilePollBase(object):
             return True
         return False
 
-    def msg_join(self, filename, data):
+    def reformate(self, filename, data):
         if self.filter:
             data = self.filter(data)
             if not data:
                 return None
         msg = dict()
-        msg['collector'] = self.collector_name.encode('utf-8')
+        msg['collectors'] = self.collector_set.encode('utf-8')
         msg['filename'] = filename.encode('utf-8')
         msg['data'] = data
         return msg
@@ -223,7 +193,7 @@ if platform.system() == 'Linux':
                             if e.errno != EINTR:
                                 raise e
                 except Exception:
-                    self.logger.error(traceback.format_exc())
+                    self.log.error(traceback.format_exc())
                     exit(-1)
                 finally:
                     self.clean_handlers()
@@ -245,7 +215,7 @@ if platform.system() == 'Linux':
                     _data = self._get_log_data_by_handler(_in_process_file_handler)
                     if _data:
                         for _line in _data:
-                            msg = self.msg_join(filename=_in_process_file_handler.name, data=_line)
+                            msg = self.reformate(filename=_in_process_file_handler.name, data=_line)
                             if msg:
                                 self.channel.put(msg)
                             # 数据完整性由collector来保证
@@ -262,7 +232,7 @@ if platform.system() == 'Linux':
                 basename = os.path.basename(os.path.normpath(self.pool_path))
                 self.inotify.remove_watch(self.pool_path)
                 self.inotify.add_watch(parent_path, IN_CREATE | IN_MOVED_TO)
-                self.logger.debug('pool_path is deleted, waiting for pool_path to be created')
+                self.log.debug('pool_path is deleted, waiting for pool_path to be created')
                 wait_flag = False if os.path.exists(self.pool_path) else True
                 while not self.exit_flag and wait_flag:
                     try:
@@ -277,10 +247,10 @@ if platform.system() == 'Linux':
                             raise e
                 self._break_flag = False
                 self.inotify.remove_watch(parent_path)
-                self.logger.debug('stop waiting for pool_path to be created')
+                self.log.debug('stop waiting for pool_path to be created')
 
         def exit(self, *args, **kwargs):
-            self.logger.info('Received sigterm, agent[{}] is going down.'.format(self.name))
+            self.log.info('Received sigterm, agent[{}] is going down.'.format(self.name))
             self.exit_flag = True
 
     SystemPoll = InotifyPoll
@@ -344,7 +314,7 @@ elif platform.system() == 'Darwin':
                                     continue
                                 else:
                                     for _line in _data:
-                                        msg = self.msg_join(filename=_in_process_file_handler.name, data=_line)
+                                        msg = self.reformate(filename=_in_process_file_handler.name, data=_line)
                                         if msg:
                                             self.channel.put(msg)
                                 # 数据完整性由collector来保证
@@ -356,7 +326,7 @@ elif platform.system() == 'Darwin':
                                     xor_set_list = [os.path.join(self.pool_path, name) for name in xor_set]
                                     self._reset_pickle(xor_set_list)
                                     before_directories = after_directories
-                                    self.logger.debug('[{}]'.format(self.name)
+                                    self.log.debug('[{}]'.format(self.name)
                                                       + str(xor_set)
                                                       + 'These files are added or deleted;')
                                 break_flag = False
@@ -367,9 +337,9 @@ elif platform.system() == 'Darwin':
                             elif self.on_signal_terminate(event):
                                 self.exit_flag = True
                                 break_flag = False
-                                self.logger.info('Received sigterm, agent[{}] is going down.'.format(self.name))
+                                self.log.info('Received sigterm, agent[{}] is going down.'.format(self.name))
                 except Exception:
-                    self.logger.error(traceback.format_exc())
+                    self.log.error(traceback.format_exc())
                 finally:
                     self.clean_handlers()
                     os.close(pool_path_handler)
@@ -394,8 +364,8 @@ class FilePoll(SystemPoll):
         self.name = kwargs.get('name', '')
         self.pid = os.getpid()
 
-        self.logger.debug('agent[{}] pid: '.format(self.name) + str(self.pid))
-        self.logger.info('Pyflume agent[{}] starts.'.format(self.name))
+        self.log.debug('agent[{}] pid: '.format(self.name) + str(self.pid))
+        self.log.info('Pyflume agent[{}] starts.'.format(self.name))
 
         self.monitor_file()
-        self.logger.info('Pyflume agent[{}] ends.'.format(self.name))
+        self.log.info('Pyflume agent[{}] ends.'.format(self.name))

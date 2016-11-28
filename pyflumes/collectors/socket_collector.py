@@ -16,7 +16,7 @@ class SockCollector(Collector):
 
     def process_data(self, msg):
         _data = msg['filename'] + ': ' + msg['data']
-        self.log.debug(msg['collector'] + _data)
+        self.log.debug(msg['collectors'] + _data)
 
         while True:
             try:
