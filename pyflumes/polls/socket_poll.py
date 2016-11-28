@@ -3,7 +3,7 @@
 import os
 import traceback
 
-from socket import socket, AF_INET, SOCK_STREAM
+from socket import socket, error, AF_INET, SOCK_STREAM
 
 from pyflumes.polls.base import PollBase
 
@@ -42,9 +42,13 @@ class SocketPoll(PollBase):
 
         self.channel = chn(channel_name=self.channel_name)
         while event.wait(timeout=0):
-            connection = None
+
             try:
                 connection, client_address = sock.accept()
+            except error:
+                continue
+
+            try:
                 data = ''
                 while True:
                     piece = connection.recv(1024)
@@ -59,8 +63,7 @@ class SocketPoll(PollBase):
             except:
                 self.log.error(traceback.format_exc())
             finally:
-                if connection:
-                    connection.close()
+                connection.close()
 
         try:
             sock.close()

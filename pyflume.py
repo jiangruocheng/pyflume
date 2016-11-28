@@ -36,9 +36,7 @@ class Pyflume(object):
         signal.signal(signal.SIGTERM, self.kill)
 
     def kill(self, *args, **kwargs):
-        self.log.debug('pids:' + str(self.pids))
         self.global_event.clear()
-        self.log.info('Waiting subprocess exit...')
         for _pid in self.pids:
             try:
                 os.kill(_pid, signal.SIGTERM)
@@ -70,6 +68,7 @@ class Pyflume(object):
             for _p in self.processes:
                 if not _p.is_alive():
                     self.log.warning(_p.name + ' is not alive.')
+                    self.log.warning('Try to end pyflume.')
                     self.kill()
                     flag = False
                     break
@@ -100,7 +99,7 @@ def start():
     handler = MyTimedRotatingFileHandler(log_path, "midnight", 1)
     formatter = '%(asctime)s - %(filename)s:%(lineno)s - %(levelname)s - %(name)s - %(message)s'
     handler.setFormatter(logging.Formatter(formatter))
-    level = logging.DEBUG if config.get('LOG', 'DEBUG') == 'True' else logging.ERROR
+    level = logging.DEBUG if config.get('LOG', 'DEBUG') == 'True' else logging.WARNING
     logger = logging.getLogger(config.get('LOG', 'LOG_HANDLER'))
     logger.setLevel(level)
     logger.addHandler(handler)
