@@ -2,6 +2,8 @@
 
 import logging
 
+from multiprocessing import Process
+
 from channels.file_channel import FileChannel
 from channels.memery_channel import MemoryChannel
 
@@ -10,6 +12,8 @@ class ChannelProxy(object):
     def __init__(self, config):
         self.log = logging.getLogger(config.get('LOG', 'LOG_HANDLER'))
         self.channels = dict()
+        self.processes = list()
+        self.pids = list()
         for section in config.sections():
             if section.startswith('CHANNEL:'):
                 channel_type = config.get(section, 'TYPE')
@@ -28,3 +32,13 @@ class ChannelProxy(object):
             self.log.error('未知的channel')
             raise Exception('未知的channel')
         return self.channels[name]
+
+    def run(self, *args, **kwargs):
+        event = kwargs.get('event')
+        for name, channel in self.channels.iteritems():
+            _channel_process = Process(name=name,
+                                       target=channel.handout,
+                                       args=(event,))
+            _channel_process.start()
+            self.processes.append(_channel_process)
+            self.pids.append(_channel_process.pid)

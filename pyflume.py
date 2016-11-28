@@ -14,7 +14,7 @@ import logging
 import argparse
 import configparser
 
-from multiprocessing import Process, Queue
+from multiprocessing import Event
 
 from pyflumes.channel import ChannelProxy
 from pyflumes.agent import AgentProxy
@@ -31,11 +31,13 @@ class Pyflume(object):
         self.collector = CollectorProxy(config)
         self.pids = list()
         self.processes = list()
+        self.global_event = None
 
         signal.signal(signal.SIGTERM, self.kill)
 
     def kill(self, *args, **kwargs):
         self.log.debug('pids:' + str(self.pids))
+        self.global_event.clear()
         self.log.info('Waiting subprocess exit...')
         for _pid in self.pids:
             try:
@@ -46,14 +48,19 @@ class Pyflume(object):
 
     def run(self):
         self.log.info('Pyflume starts.')
-        _collector_process = Process(name='pyflume-collector',
-                                     target=self.collector.run,
-                                     kwargs={'channel': self.channel})
-        _collector_process.start()
-        self.pids.append(_collector_process.pid)
-        self.processes.append(_collector_process)
+        # 向channel注册collector
+        self.collector.register_collectors(self.channel)
 
-        self.agent.run(channel=self.channel)
+        self.global_event = Event()
+        self.global_event.set()
+
+        # 启动channel
+        self.channel.run(event=self.global_event)
+        self.pids += self.channel.pids
+        self.processes += self.channel.processes
+
+        # 启动poll
+        self.agent.run(channel=self.channel, event=self.global_event)
         self.pids += self.agent.pids
         self.processes += self.agent.processes
 

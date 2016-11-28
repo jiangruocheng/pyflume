@@ -13,6 +13,7 @@ class PollBase(object):
 
     def __init__(self, config, section):
         self.log = logging.getLogger(config.get('LOG', 'LOG_HANDLER'))
+        self.name = section[section.find(':') + 1:]
         self.collector_set = config.get(section, 'COLLECTOR')
         self.channel_name = config.get(section, 'CHANNEL')
         self.channel = None

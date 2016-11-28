@@ -1,12 +1,15 @@
 #! -*- coding:utf-8 -*-
 
 import os
-import logging
+import time
+import traceback
+
+from pyflumes.channels.base import ChannelBase
 
 
-class FileChannel(object):
+class FileChannel(ChannelBase):
     def __init__(self, config, section):
-        self.log = logging.getLogger(config.get('LOG', 'LOG_HANDLER'))
+        super(FileChannel, self).__init__(config, section)
         self.store_dir = config.get(section, 'STORE_DIR')
         self.file_max_size = int(config.get(section, 'FILE_MAX_SIZE'))
         self.ignore_postfix = config.get(section, 'IGNORE_POSTFIX')
@@ -16,7 +19,6 @@ class FileChannel(object):
         name = os.path.basename(data.get('filename', ''))
         if not name:
             self.log.warning('Incorrect format: ' + str(data))
-
         return name
 
     def list_files_size(self):
@@ -57,6 +59,20 @@ class FileChannel(object):
             self.handlers[file_name] = f
         f.write(data.get('data'))
         f.flush()
+
+    def handout(self, event):
+        self.log.info(self.name + ' [{}] starts'.format(os.getpid()))
+
+        while event.wait(timeout=0):
+            try:
+                data = self.get()
+                func = self.call_backs.get('hive', '')
+                # 此channel目前只支持hive collector
+                func(data)
+            except:
+                self.log.warning(traceback.format_exc())
+            time.sleep(30)
+        self.log.info(self.name + ' [{}] starts'.format(os.getpid()))
 
     def __del__(self):
         for handler in self.handlers.itervalues():

@@ -1,8 +1,6 @@
 #! -*- coding:utf-8 -*-
 
 import os
-import sys
-import signal
 import traceback
 
 from socket import socket, AF_INET, SOCK_STREAM
@@ -30,24 +28,21 @@ class SocketPoll(PollBase):
                 return None
         return {'collectors': self.collector_set, 'filename': filename, 'data': _data.lstrip()}
 
-    def exit(self, *args, **kwargs):
-        self.log.info('Socket poll is leaving.')
-        self.exit_flag = True
-
     def run(self, *args, **kwargs):
+        self.log.info('Socket Agent[{}] starts'.format(os.getpid()))
         chn = kwargs.get('channel', None)
+        event = kwargs.get('event')
         if not chn:
             self.log.error('Channel should not be lost.')
             raise Exception('Channel should not be lost.')
-
-        signal.signal(signal.SIGTERM, self.exit)
 
         sock = socket(AF_INET, SOCK_STREAM)
         sock.bind((self.ip, self.port))
         sock.listen(int(self.max_clients))
 
         self.channel = chn(channel_name=self.channel_name)
-        while not self.exit_flag:
+        while event.wait(timeout=0):
+            connection = None
             try:
                 connection, client_address = sock.accept()
                 data = ''
@@ -60,12 +55,15 @@ class SocketPoll(PollBase):
                 if data:
                     self.channel.put(data)
                 connection.sendall('success')
+                connection.close()
             except:
                 self.log.error(traceback.format_exc())
             finally:
-                connection.close()
+                if connection:
+                    connection.close()
 
         try:
             sock.close()
         except:
             pass
+        self.log.info('Socket Agent[{}] ends'.format(os.getpid()))

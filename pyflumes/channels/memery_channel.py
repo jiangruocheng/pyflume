@@ -6,9 +6,13 @@ import pickle
 from multiprocessing import Queue
 from multiprocessing.queues import Empty
 
+from pyflumes.channels.base import ChannelBase
+from pyflumes.wrappers import channel_lock
 
-class MemoryChannel(object):
+
+class MemoryChannel(ChannelBase):
     def __init__(self, config, section):
+        super(MemoryChannel, self).__init__(config, section)
         self.queue = Queue()
         self.message_backup = config.get(section, 'MESSAGE_BACKUP')
         self.fetch_back_up_data()
@@ -25,6 +29,7 @@ class MemoryChannel(object):
 
         return self.queue.get(timeout=timeout)
 
+    @channel_lock
     def put(self, data, timeout=30):
 
         self.queue.put(data, timeout=timeout)
