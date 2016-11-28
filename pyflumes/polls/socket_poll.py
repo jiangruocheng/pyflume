@@ -18,6 +18,7 @@ class SocketPoll(PollBase):
         self.ip = config.get(section, 'LISTEN_IP')
         self.port = int(config.get(section, 'LISTEN_PORT'))
         self.max_clients = config.get(section, 'MAX_CLIENTS')
+        self.exit_flag = False
 
     def reformate(self, data):
         _list = data.split(':')
@@ -31,7 +32,7 @@ class SocketPoll(PollBase):
 
     def exit(self, *args, **kwargs):
         self.log.info('Socket poll is leaving.')
-        sys.exit(0)
+        self.exit_flag = True
 
     def run(self, *args, **kwargs):
         chn = kwargs.get('channel', None)
@@ -46,9 +47,9 @@ class SocketPoll(PollBase):
         sock.listen(int(self.max_clients))
 
         self.channel = chn(channel_name=self.channel_name)
-        while True:
-            connection, client_address = sock.accept()
+        while not self.exit_flag:
             try:
+                connection, client_address = sock.accept()
                 data = ''
                 while True:
                     piece = connection.recv(1024)
@@ -63,3 +64,8 @@ class SocketPoll(PollBase):
                 self.log.error(traceback.format_exc())
             finally:
                 connection.close()
+
+        try:
+            sock.close()
+        except:
+            pass
