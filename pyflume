@@ -1,6 +1,151 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-from pyflumes import pyflume
+import os
+import time
+import signal
+import logging
+import traceback
+import subprocess
+import configparser
 
-pyflume.start()
+from SimpleXMLRPCServer import SimpleXMLRPCServer
+from multiprocessing import Process, Value
+
+
+from pyflumes.pyflume import run
+from pyflumes.utils import daemonize
+from pyflumes.logger import MyTimedRotatingFileHandler
+
+CONFIG = None
+PID = Value('i', 0)
+
+
+def init():
+    # 初始化，创建必须目录
+    os.system('mkdir -vp /tmp/pyflume/{config/,logs/,scripts/,tmp/hive}')
+
+
+def reset():
+    # 初始化目录，删除全部数据
+    _dirs = os.listdir('/tmp/pyflume/tmp/')
+    for _ in _dirs:
+        try:
+            os.remove('/tmp/pyflume/tmp/'+_)
+        except:
+            pass
+
+    _dirs = os.listdir('/tmp/pyflume/logs/')
+    for _ in _dirs:
+        try:
+            os.remove('/tmp/pyflume/logs/'+_)
+        except:
+            pass
+
+    _dirs = os.listdir('/tmp/pyflume/tmp/hive/')
+    for _ in _dirs:
+        try:
+            os.remove('/tmp/pyflume/tmp/hive/'+_)
+        except:
+            pass
+
+    _dirs = os.listdir('/tmp/pyflume/config/')
+    for _ in _dirs:
+        try:
+            os.remove('/tmp/pyflume/config/'+_)
+        except:
+            pass
+
+    _dirs = os.listdir('/tmp/pyflume/scripts/')
+    for _ in _dirs:
+        try:
+            os.remove('/tmp/pyflume/scripts/'+_)
+        except:
+            pass
+    return 'Done'
+
+
+def init_log():
+    # 初始化log配置
+    log_path = CONFIG.get('LOG', 'LOG_FILE')
+    handler = MyTimedRotatingFileHandler(log_path, "midnight", 1)
+    formatter = '%(asctime)s - %(filename)s:%(lineno)s - %(levelname)s - %(name)s - %(message)s'
+    handler.setFormatter(logging.Formatter(formatter))
+    level = logging.DEBUG if CONFIG.get('LOG', 'DEBUG') == 'True' else logging.INFO
+    logger = logging.getLogger(CONFIG.get('LOG', 'LOG_HANDLER'))
+    logger.setLevel(level)
+    logger.addHandler(handler)
+
+
+def config(content):
+    # 导入配置文件
+    global CONFIG
+    try:
+        with open('/tmp/pyflume/config/default.cfg', 'w') as f:
+            f.write(content)
+        CONFIG = configparser.ConfigParser()
+        CONFIG.read('/tmp/pyflume/config/default.cfg')
+        init_log()
+    except:
+        return traceback.format_exc()
+
+    return 'Success'
+
+
+def is_running():
+    global PID
+    if PID.value == 0:
+        return False
+    try:
+        subprocess.check_output("ps aux | grep {} | grep pyflume | grep -v grep".format(PID.value), shell=True)
+    except subprocess.CalledProcessError:
+        PID.value = 0
+        return False
+    return True
+
+
+def start():
+    global CONFIG, PID
+    if CONFIG is None:
+        return 'Please import config.'
+    if is_running():
+        return 'Pylfume is still running.'
+    try:
+        t = Process(target=run,
+                    args=(CONFIG, PID))
+        t.daemon = False
+        t.start()
+    except:
+        return traceback.format_exc()
+
+    time.sleep(3)
+
+    return 'Success, pyflume[{}] is running.'.format(PID.value)
+
+
+def stop():
+    global PID
+    try:
+        os.kill(PID.value, signal.SIGTERM)
+    except:
+        return traceback.format_exc()
+    return 'Please run check to check if pyflume is still running.'
+
+
+def upload_script(script_name, content):
+    _path = os.path.join('/tmp/pyflume/scripts/', script_name)
+    with open(_path, 'w') as f:
+        f.write(content)
+    return 'Done'
+
+if __name__ == '__main__':
+    daemonize()
+    init()
+    server = SimpleXMLRPCServer(("0.0.0.0", 12001))
+    server.register_function(config, "config")
+    server.register_function(reset, "reset")
+    server.register_function(is_running, "is_running")
+    server.register_function(start, "start")
+    server.register_function(stop, "stop")
+    server.register_function(upload_script, "upload_script")
+    server.serve_forever()

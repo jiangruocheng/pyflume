@@ -15,8 +15,9 @@ class SockCollector(Collector):
         self.server_port = int(config.get(section, 'SERVER_PORT'))
 
     def process_data(self, msg):
+        result = 'ok'
         _data = msg['filename'] + ': ' + msg['data']
-        self.log.debug(msg['collector'] + _data)
+        self.log.debug(msg['collectors'] + _data)
 
         while True:
             try:
@@ -24,14 +25,13 @@ class SockCollector(Collector):
                 sock.connect((self.server_ip, self.server_port))
                 self.log.debug('Connected to :' + str((self.server_ip, self.server_port)))
                 sock.sendall(_data + '(EOF)')
-            except error:
-                self.log.warning('Cant connect to :' + str((self.server_ip, self.server_port)))
-                time.sleep(30)
-                continue
             except:
                 self.log.debug(_data)
                 self.log.error(traceback.format_exc())
+                result = 'Fail'
             finally:
                 sock.close()
 
             break
+
+        return result,

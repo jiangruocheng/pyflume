@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 import os
 import struct
-from errno import EINTR
+from errno import EINTR, EINVAL
 from ctypes import CDLL, CFUNCTYPE, c_int, c_char_p, c_uint32, get_errno
 
 _libc = CDLL("libc.so.6")
@@ -38,7 +38,11 @@ class Inotify(object):
         if wd:
             self.__path_to_wd.pop(path)
             self.__wd_to_path.pop(wd)
-            _inotify_rm_watch(self.__fd, wd)
+            try:
+                _inotify_rm_watch(self.__fd, wd)
+            except OSError as e:
+                if e.errno != EINVAL:
+                    raise e
 
     def read_events(self, n=1024):
         """
@@ -63,7 +67,9 @@ class Inotify(object):
             if i + _iIII_length + length > buffer_length:
                 break
             name = self.__buffer[i + _iIII_length:i + _iIII_length + length].rstrip(b'\0')
-            events.append((self.__wd_to_path[wd], mask, cookie, name))
+            watch_path = self.__wd_to_path.get(wd)
+            if watch_path:
+                events.append((watch_path, mask, cookie, name))
             i += _iIII_length + length
 
         self.__buffer = self.__buffer[i:]
@@ -93,6 +99,7 @@ IN_MOVED_TO = 0x00000080  # File was moved to Y
 IN_CREATE = 0x00000100  # Subfile was created
 IN_DELETE = 0x00000200  # Subfile was deleted
 IN_DELETE_SELF = 0x00000400  # Self was deleted
+IN_MOVE_SELF = 0x00000800  # Self was moved
 
 # the following are legal events.  they are sent as needed to any watch
 IN_UNMOUNT = 0x00002000  # Backing fs was unmounted
@@ -104,12 +111,17 @@ IN_CLOSE = (IN_CLOSE_WRITE | IN_CLOSE_NOWRITE)  # close
 IN_MOVE = (IN_MOVED_FROM | IN_MOVED_TO)  # moves
 
 # special flags
+IN_ONLYDIR = 0x01000000  # only watch the path if it is a directory
+IN_DONT_FOLLOW = 0x02000000  # don't follow a sym link
+IN_EXCL_UNLINK = 0x04000000  # exclude events on unlinked objects
+IN_MASK_ADD = 0x20000000  # add to the mask of an already existing watch
 IN_ISDIR = 0x40000000  # event occurred against dir
-IN_ONESHO = 0x80000000  # only send event once
+IN_ONESHOT = 0x80000000  # only send event once
 
 # All of the events - we build the list by hand so that we can add flags in
 # the future and not break backward compatibility.  Apps will get only the
 # events that they originally wanted.  Be sure to add new events here!
 IN_ALL_EVENTS = (IN_ACCESS | IN_MODIFY | IN_ATTRIB | IN_CLOSE_WRITE |
                  IN_CLOSE_NOWRITE | IN_OPEN | IN_MOVED_FROM |
-                 IN_MOVED_TO | IN_DELETE | IN_CREATE | IN_DELETE_SELF)
+                 IN_MOVED_TO | IN_DELETE | IN_CREATE | IN_DELETE_SELF |
+                 IN_MOVE_SELF)

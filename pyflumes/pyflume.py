@@ -11,15 +11,13 @@ if _basedir not in sys.path:
 import time
 import signal
 import logging
-import argparse
-import configparser
 
-from logging.handlers import TimedRotatingFileHandler
-from multiprocessing import Process, Queue
+from multiprocessing import Event, Process
 
-from channel import ChannelProxy
-from agent import AgentProxy
-from collector import CollectorProxy
+from pyflumes.channel import ChannelProxy
+from pyflumes.agent import AgentProxy
+from pyflumes.collector import CollectorProxy
+from pyflumes.utils import daemonize
 
 
 class Pyflume(object):
@@ -31,33 +29,51 @@ class Pyflume(object):
         self.collector = CollectorProxy(config)
         self.pids = list()
         self.processes = list()
+        self.global_event = None
 
         signal.signal(signal.SIGTERM, self.kill)
 
     def kill(self, *args, **kwargs):
-        self.log.debug('pids:' + str(self.pids))
-        self.log.info('Waiting subprocess exit...')
+        self.global_event.clear()
         for _pid in self.pids:
             try:
                 os.kill(_pid, signal.SIGTERM)
-                time.sleep(1)
+                time.sleep(2)
             except:
                 pass
 
-    def run(self):
-        self.log.info('Pyflume starts.')
-        _collector_process = Process(name='pyflume-collector',
-                                     target=self.collector.run,
-                                     kwargs={'channel': self.channel})
-        _collector_process.start()
-        self.pids.append(_collector_process.pid)
-        self.processes.append(_collector_process)
+    def run(self, share_pid):
 
-        self.agent.run(channel=self.channel)
+        daemonize()
+        share_pid.value = os.getpid()
+
+        self.log.info('Pyflume starts.')
+        # 向channel注册collector
+        self.collector.register_collectors(self.channel)
+
+        self.global_event = Event()
+        self.global_event.set()
+
+        # 启动channel
+        self.channel.run(event=self.global_event)
+        self.pids += self.channel.pids
+        self.processes += self.channel.processes
+
+        # 启动poll
+        self.agent.run(channel=self.channel, event=self.global_event)
         self.pids += self.agent.pids
         self.processes += self.agent.processes
 
-        signal.pause()
+        flag = True
+        while flag:
+            time.sleep(30)
+            for _p in self.processes:
+                if not _p.is_alive():
+                    self.log.warning(_p.name + ' is not alive.')
+                    self.log.warning('Try to end pyflume.')
+                    self.kill()
+                    flag = False
+                    break
 
         for _process in self.processes:
             _process.join()
@@ -65,34 +81,11 @@ class Pyflume(object):
         self.log.info('Pyflume ends.')
 
 
-def start():
-    parser = argparse.ArgumentParser()
-    parser.add_argument('-c', '--configure', help='给定配置文件路径,导入配置')
-    args = parser.parse_args()
-    if args.configure:
-        if os.path.exists(args.configure):
-            # 导入配置文件
-            config = configparser.ConfigParser()
-            config.read(args.configure)
-        else:
-            print 'No configure file exists.'
-            sys.exit(0)
-    else:
-        print 'please import configure file.'
-        sys.exit(0)
-
-    log_path = config.get('LOG', 'LOG_FILE')
-    handler = TimedRotatingFileHandler(log_path, "midnight", 1)
-    formatter = '%(asctime)s - %(filename)s:%(lineno)s - %(levelname)s - %(name)s - %(message)s'
-    handler.setFormatter(logging.Formatter(formatter))
-    level = logging.DEBUG if config.get('LOG', 'DEBUG') == 'True' else logging.ERROR
-    logger = logging.getLogger(config.get('LOG', 'LOG_HANDLER'))
-    logger.setLevel(level)
-    logger.addHandler(handler)
-
-    pyflume = Pyflume(config)
-    pyflume.run()
-
-if __name__ == '__main__':
-
-    start()
+def run(config, pid):
+    try:
+        t = Process(target=Pyflume(config).run,
+                    args=(pid,))
+        t.daemon = False
+        t.start()
+    except SystemExit:
+        pass

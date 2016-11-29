@@ -2,6 +2,10 @@
 
 import logging
 
+from multiprocessing import Process
+
+from weakref import proxy
+
 from channels.file_channel import FileChannel
 from channels.memery_channel import MemoryChannel
 
@@ -9,6 +13,8 @@ from channels.memery_channel import MemoryChannel
 class ChannelProxy(object):
     def __init__(self, config):
         self.log = logging.getLogger(config.get('LOG', 'LOG_HANDLER'))
+        self.processes = list()
+        self.pids = list()
         self.channels = dict()
         for section in config.sections():
             if section.startswith('CHANNEL:'):
@@ -27,4 +33,14 @@ class ChannelProxy(object):
         if not name:
             self.log.error('未知的channel')
             raise Exception('未知的channel')
-        return self.channels[name]
+        return proxy(self.channels[name])
+
+    def run(self, *args, **kwargs):
+        event = kwargs.get('event')
+        for name, channel in self.channels.iteritems():
+            _channel_process = Process(name=name,
+                                       target=channel.handout,
+                                       args=(event,))
+            _channel_process.start()
+            self.processes.append(_channel_process)
+            self.pids.append(_channel_process.pid)

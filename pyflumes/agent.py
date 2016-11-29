@@ -23,12 +23,13 @@ class AgentProxy(object):
                 else:
                     raise Exception('NotImplemented')
 
-    def run(self, channel=None):
+    def run(self, channel=None, event=None):
         for name, agent in self.agents.iteritems():
             _agent_process = Process(name=name,
                                      target=agent.run,
                                      kwargs={'channel': channel,
-                                             'name': name})
+                                             'name': name,
+                                             'event': event})
             _agent_process.start()
             self.processes.append(_agent_process)
             self.pids.append(_agent_process.pid)
