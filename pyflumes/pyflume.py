@@ -11,15 +11,13 @@ if _basedir not in sys.path:
 import time
 import signal
 import logging
-import argparse
-import configparser
 
-from multiprocessing import Event
+from multiprocessing import Event, Process
 
 from pyflumes.channel import ChannelProxy
 from pyflumes.agent import AgentProxy
 from pyflumes.collector import CollectorProxy
-from pyflumes.logger import MyTimedRotatingFileHandler
+from pyflumes.utils import daemonize
 
 
 class Pyflume(object):
@@ -44,7 +42,11 @@ class Pyflume(object):
             except:
                 pass
 
-    def run(self):
+    def run(self, share_pid):
+
+        daemonize()
+        share_pid.value = os.getpid()
+
         self.log.info('Pyflume starts.')
         # 向channel注册collector
         self.collector.register_collectors(self.channel)
@@ -79,34 +81,11 @@ class Pyflume(object):
         self.log.info('Pyflume ends.')
 
 
-def start():
-    parser = argparse.ArgumentParser()
-    parser.add_argument('-c', '--configure', help='给定配置文件路径,导入配置')
-    args = parser.parse_args()
-    if args.configure:
-        if os.path.exists(args.configure):
-            # 导入配置文件
-            config = configparser.ConfigParser()
-            config.read(args.configure)
-        else:
-            print 'No configure file exists.'
-            sys.exit(0)
-    else:
-        print 'please import configure file.'
-        sys.exit(0)
-
-    log_path = config.get('LOG', 'LOG_FILE')
-    handler = MyTimedRotatingFileHandler(log_path, "midnight", 1)
-    formatter = '%(asctime)s - %(filename)s:%(lineno)s - %(levelname)s - %(name)s - %(message)s'
-    handler.setFormatter(logging.Formatter(formatter))
-    level = logging.DEBUG if config.get('LOG', 'DEBUG') == 'True' else logging.INFO
-    logger = logging.getLogger(config.get('LOG', 'LOG_HANDLER'))
-    logger.setLevel(level)
-    logger.addHandler(handler)
-
-    pyflume = Pyflume(config)
-    pyflume.run()
-
-if __name__ == '__main__':
-
-    start()
+def run(config, pid):
+    try:
+        t = Process(target=Pyflume(config).run,
+                    args=(pid,))
+        t.daemon = False
+        t.start()
+    except SystemExit:
+        pass
