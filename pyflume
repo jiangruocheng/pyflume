@@ -55,6 +55,13 @@ def reset():
             os.remove('/tmp/pyflume/config/'+_)
         except:
             pass
+
+    _dirs = os.listdir('/tmp/pyflume/scripts/')
+    for _ in _dirs:
+        try:
+            os.remove('/tmp/pyflume/scripts/'+_)
+        except:
+            pass
     return 'Done'
 
 
@@ -125,6 +132,12 @@ def stop():
     return 'Please run check to check if pyflume is still running.'
 
 
+def upload_script(script_name, content):
+    _path = os.path.join('/tmp/pyflume/scripts/', script_name)
+    with open(_path, 'w') as f:
+        f.write(content)
+    return 'Done'
+
 if __name__ == '__main__':
     daemonize()
     init()
@@ -134,4 +147,5 @@ if __name__ == '__main__':
     server.register_function(is_running, "is_running")
     server.register_function(start, "start")
     server.register_function(stop, "stop")
+    server.register_function(upload_script, "upload_script")
     server.serve_forever()
