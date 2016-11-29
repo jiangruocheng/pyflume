@@ -1,6 +1,7 @@
 #! -*- coding:utf-8 -*-
 
 import os
+import uuid
 import pickle
 
 from multiprocessing import Queue
@@ -31,7 +32,9 @@ class MemoryChannel(ChannelBase):
 
     @channel_lock
     def put(self, data, timeout=30):
-
+        if isinstance(data, dict):
+            if 'id' not in data:
+                data['id'] = str(uuid.uuid4())
         self.queue.put(data, timeout=timeout)
 
     def __del__(self):
@@ -39,7 +42,7 @@ class MemoryChannel(ChannelBase):
         while True:
             try:
                 _list.append(self.get(timeout=1))
-            except Empty:
+            except (EOFError, Empty):
                 break
         with open(self.message_backup, 'w') as f:
             pickle.dump(_list, f)
