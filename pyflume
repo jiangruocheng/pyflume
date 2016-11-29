@@ -128,7 +128,7 @@ def stop():
 if __name__ == '__main__':
     daemonize()
     init()
-    server = SimpleXMLRPCServer(("localhost", 12001))
+    server = SimpleXMLRPCServer(("0.0.0.0", 12001))
     server.register_function(config, "config")
     server.register_function(reset, "reset")
     server.register_function(is_running, "is_running")
