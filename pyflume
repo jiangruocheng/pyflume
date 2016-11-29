@@ -6,6 +6,7 @@ import time
 import signal
 import logging
 import traceback
+import subprocess
 import configparser
 
 from SimpleXMLRPCServer import SimpleXMLRPCServer
@@ -23,6 +24,38 @@ PID = Value('i', 0)
 def init():
     # 初始化，创建必须目录
     os.system('mkdir -vp /tmp/pyflume/{config/,logs/,scripts/,tmp/hive}')
+
+
+def reset():
+    # 初始化目录，删除全部数据
+    _dirs = os.listdir('/tmp/pyflume/tmp/')
+    for _ in _dirs:
+        try:
+            os.remove('/tmp/pyflume/tmp/'+_)
+        except:
+            pass
+
+    _dirs = os.listdir('/tmp/pyflume/logs/')
+    for _ in _dirs:
+        try:
+            os.remove('/tmp/pyflume/logs/'+_)
+        except:
+            pass
+
+    _dirs = os.listdir('/tmp/pyflume/tmp/hive/')
+    for _ in _dirs:
+        try:
+            os.remove('/tmp/pyflume/tmp/hive/'+_)
+        except:
+            pass
+
+    _dirs = os.listdir('/tmp/pyflume/config/')
+    for _ in _dirs:
+        try:
+            os.remove('/tmp/pyflume/config/'+_)
+        except:
+            pass
+    return 'Done'
 
 
 def init_log():
@@ -53,6 +86,14 @@ def config(content):
 
 
 def is_running():
+    global PID
+    if PID.value == 0:
+        return False
+    try:
+        subprocess.check_output("ps aux | grep {} | grep pyflume | grep -v grep".format(PID.value), shell=True)
+    except subprocess.CalledProcessError:
+        PID.value = 0
+        return False
     return True
 
 
@@ -61,7 +102,7 @@ def start():
     if CONFIG is None:
         return 'Please import config.'
     if is_running():
-        return 'Pyflume is running now.'
+        return 'Pylfume is still running.'
     try:
         t = Process(target=run,
                     args=(CONFIG, PID))
@@ -89,6 +130,8 @@ if __name__ == '__main__':
     init()
     server = SimpleXMLRPCServer(("localhost", 12001))
     server.register_function(config, "config")
+    server.register_function(reset, "reset")
+    server.register_function(is_running, "is_running")
     server.register_function(start, "start")
     server.register_function(stop, "stop")
     server.serve_forever()
