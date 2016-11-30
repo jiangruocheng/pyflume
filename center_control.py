@@ -203,7 +203,7 @@ if __name__ == '__main__':
     while True:
         readline.set_completer(cmd_completer)
         cmd = raw_input('>> ')
-        if run(cmd):
+        if run(cmd.strip()):
             break
 
     print 'Done.'
