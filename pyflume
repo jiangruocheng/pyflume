@@ -74,6 +74,7 @@ def init_log():
     level = logging.DEBUG if CONFIG.get('LOG', 'DEBUG') == 'True' else logging.INFO
     logger = logging.getLogger(CONFIG.get('LOG', 'LOG_HANDLER'))
     logger.setLevel(level)
+    logger.handlers = []
     logger.addHandler(handler)
 
 
