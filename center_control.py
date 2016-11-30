@@ -3,8 +3,27 @@
 import os
 import traceback
 import xmlrpclib
+import readline
+import glob
 
 SLAVE_LIST = ['10.0.6.75', '10.0.6.76', '10.0.6.77', '10.0.7.9', '10.0.7.10']
+
+
+def cmd_completer(text, state):
+    CMD = ['help', 'config', 'show', 'upload_script', 'start', 'stop', 'check', 'reset', 'exit']
+    options = [cmd for cmd in CMD if cmd.startswith(text)]
+    if state < len(options):
+        return options[state]
+    else:
+        return None
+
+
+def path_completer(text, state):
+    options = map(lambda f: f + '/' if os.path.isdir(f) else f, glob.glob(text+'*'))
+    if state < len(options):
+        return options[state]
+    else:
+        return None
 
 
 def run(cmd):
@@ -55,11 +74,13 @@ def show():
 def config():
     show()
     choose = raw_input('选着需要配置的ip的序号，全选输入all:')
+    proxy = None
     try:
         if 'all' == choose:
             ip_list = SLAVE_LIST
         else:
             ip_list = [SLAVE_LIST[int(i)] for i in choose.split()]
+        readline.set_completer(path_completer)
         _path = raw_input('请输入配置文件的地址:')
         for ip in ip_list:
             print 'IP: ', ip, 'is proccessing...'
@@ -69,18 +90,22 @@ def config():
                 print 'Result:', str(proxy.config(f.read()))
     except:
         print traceback.format_exc()
-
+    finally:
+        if proxy is not None:
+            proxy('close')
     print 'Done.'
 
 
 def upload_script():
     show()
     choose = raw_input('选着需要配置的ip的序号，全选输入all:')
+    proxy = None
     try:
         if 'all' == choose:
             ip_list = SLAVE_LIST
         else:
             ip_list = [SLAVE_LIST[int(i)] for i in choose.split()]
+        readline.set_completer(path_completer)
         _path = raw_input('请输入脚本文件的地址:')
         for ip in ip_list:
             print 'IP: ', ip, 'is proccessing...'
@@ -90,6 +115,9 @@ def upload_script():
                 print 'Result:', str(proxy.upload_script(os.path.basename(_path), f.read()))
     except:
         print traceback.format_exc()
+    finally:
+        if proxy is not None:
+            proxy('close')
 
     print 'Done.'
 
@@ -97,6 +125,7 @@ def upload_script():
 def start():
     show()
     choose = raw_input('选着需要启动的ip的序号，全选输入all:')
+    proxy = None
     try:
         if 'all' == choose:
             ip_list = SLAVE_LIST
@@ -109,6 +138,9 @@ def start():
             print 'Reuslt:', str(proxy.start())
     except:
         print traceback.format_exc()
+    finally:
+        if proxy is not None:
+            proxy('close')
 
     print 'Done.'
 
@@ -116,6 +148,7 @@ def start():
 def stop():
     show()
     choose = raw_input('选着需要停止运行的ip的序号，全选输入all:')
+    proxy = None
     try:
         if 'all' == choose:
             ip_list = SLAVE_LIST
@@ -128,11 +161,15 @@ def stop():
             print 'Reuslt:', str(proxy.stop())
     except:
         print traceback.format_exc()
+    finally:
+        if proxy is not None:
+            proxy('close')
 
     print 'Done.'
 
 
 def check():
+    proxy = None
     try:
         for ip in SLAVE_LIST:
             print 'IP: ', ip, 'is proccessing...'
@@ -141,6 +178,9 @@ def check():
             print 'Reuslt:', str(proxy.is_running())
     except:
         print traceback.format_exc()
+    finally:
+        if proxy is not None:
+            proxy('close')
 
     print 'Done.'
 
@@ -148,6 +188,7 @@ def check():
 def reset():
     show()
     choose = raw_input('选着需要重置的ip的序号，全选输入all:')
+    proxy = None
     try:
         if 'all' == choose:
             ip_list = SLAVE_LIST
@@ -160,13 +201,21 @@ def reset():
             print 'Reuslt:', str(proxy.reset())
     except:
         print traceback.format_exc()
+    finally:
+        if proxy is not None:
+            proxy('close')
 
     print 'Done.'
 
 if __name__ == '__main__':
+
+    readline.parse_and_bind("tab: complete")
+    readline.set_completer_delims(' \t\n`!@#$^&*()=+[{]}\\|;:\'",<>?')
+
     help()
     while True:
-        cmd = raw_input('>>')
+        readline.set_completer(cmd_completer)
+        cmd = raw_input('>> ')
         if run(cmd):
             break
 

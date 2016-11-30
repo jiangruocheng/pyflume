@@ -125,6 +125,8 @@ def start():
 
 def stop():
     global PID
+    if not is_running():
+        return 'Pylfume is not running.'
     try:
         os.kill(PID.value, signal.SIGTERM)
     except:
