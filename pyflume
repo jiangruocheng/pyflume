@@ -23,7 +23,7 @@ PID = Value('i', 0)
 
 def init():
     # 初始化，创建必须目录
-    os.system('mkdir -vp /tmp/pyflume/{config/,logs/,scripts/,tmp/hive}')
+    os.system('bash -c "mkdir -vp /tmp/pyflume/{config/,logs/,scripts/,tmp/hive}"')
 
 
 def reset():
