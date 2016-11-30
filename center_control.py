@@ -75,7 +75,6 @@ def show():
 def config():
     show()
     choose = raw_input('选着需要配置的ip的序号，全选输入all:')
-    proxy = None
     try:
         if 'all' == choose:
             ip_list = SLAVE_LIST
@@ -89,18 +88,15 @@ def config():
             proxy = xmlrpclib.ServerProxy(address)
             with open(_path, 'r') as f:
                 print 'Result:', str(proxy.config(f.read()))
+            proxy('close')
     except:
         print traceback.format_exc()
-    finally:
-        if proxy is not None:
-            proxy('close')
     print 'Done.'
 
 
 def upload_script():
     show()
     choose = raw_input('选着需要配置的ip的序号，全选输入all:')
-    proxy = None
     try:
         if 'all' == choose:
             ip_list = SLAVE_LIST
@@ -114,11 +110,9 @@ def upload_script():
             proxy = xmlrpclib.ServerProxy(address)
             with open(_path, 'r') as f:
                 print 'Result:', str(proxy.upload_script(os.path.basename(_path), f.read()))
+            proxy('close')
     except:
         print traceback.format_exc()
-    finally:
-        if proxy is not None:
-            proxy('close')
 
     print 'Done.'
 
@@ -126,7 +120,6 @@ def upload_script():
 def start():
     show()
     choose = raw_input('选着需要启动的ip的序号，全选输入all:')
-    proxy = None
     try:
         if 'all' == choose:
             ip_list = SLAVE_LIST
@@ -137,11 +130,9 @@ def start():
             address = "http://{}:12001/".format(ip)
             proxy = xmlrpclib.ServerProxy(address)
             print 'Reuslt:', str(proxy.start())
+            proxy('close')
     except:
         print traceback.format_exc()
-    finally:
-        if proxy is not None:
-            proxy('close')
 
     print 'Done.'
 
@@ -149,7 +140,6 @@ def start():
 def stop():
     show()
     choose = raw_input('选着需要停止运行的ip的序号，全选输入all:')
-    proxy = None
     try:
         if 'all' == choose:
             ip_list = SLAVE_LIST
@@ -160,28 +150,23 @@ def stop():
             address = "http://{}:12001/".format(ip)
             proxy = xmlrpclib.ServerProxy(address)
             print 'Reuslt:', str(proxy.stop())
+            proxy('close')
     except:
         print traceback.format_exc()
-    finally:
-        if proxy is not None:
-            proxy('close')
 
     print 'Done.'
 
 
 def check():
-    proxy = None
     try:
         for ip in SLAVE_LIST:
             print 'IP: ', ip, 'is proccessing...'
             address = "http://{}:12001/".format(ip)
             proxy = xmlrpclib.ServerProxy(address)
             print 'Reuslt:', str(proxy.is_running())
+            proxy('close')
     except:
         print traceback.format_exc()
-    finally:
-        if proxy is not None:
-            proxy('close')
 
     print 'Done.'
 
@@ -189,7 +174,6 @@ def check():
 def reset():
     show()
     choose = raw_input('选着需要重置的ip的序号，全选输入all:')
-    proxy = None
     try:
         if 'all' == choose:
             ip_list = SLAVE_LIST
@@ -200,11 +184,9 @@ def reset():
             address = "http://{}:12001/".format(ip)
             proxy = xmlrpclib.ServerProxy(address)
             print 'Reuslt:', str(proxy.reset())
+            proxy('close')
     except:
         print traceback.format_exc()
-    finally:
-        if proxy is not None:
-            proxy('close')
 
     print 'Done.'
 
