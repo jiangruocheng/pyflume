@@ -4,6 +4,7 @@ import os
 import traceback
 import xmlrpclib
 import readline
+import rlcompleter
 import glob
 
 SLAVE_LIST = ['10.0.6.75', '10.0.6.76', '10.0.6.77', '10.0.7.9', '10.0.7.10']
@@ -209,7 +210,11 @@ def reset():
 
 if __name__ == '__main__':
 
-    readline.parse_and_bind("tab: complete")
+    if 'libedit' in readline.__doc__:
+        readline.parse_and_bind("bind -e")
+        readline.parse_and_bind("bind '\t' rl_complete")
+    else:
+        readline.parse_and_bind("tab: complete")
     readline.set_completer_delims(' \t\n`!@#$^&*()=+[{]}\\|;:\'",<>?')
 
     help()
