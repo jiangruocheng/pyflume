@@ -89,12 +89,13 @@ def init_log():
     logger.addHandler(handler)
 
 
-def config(content):
+def config(content=''):
     # 导入配置文件
     global CONFIG
     try:
-        with open('/tmp/pyflume/config/default.cfg', 'w') as f:
-            f.write(content)
+        if content:
+            with open('/tmp/pyflume/config/default.cfg', 'w') as f:
+                f.write(content)
         CONFIG = configparser.ConfigParser()
         CONFIG.read('/tmp/pyflume/config/default.cfg')
         init_log()
@@ -133,7 +134,7 @@ def is_running():
 def start():
     global CONFIG, PID
     if CONFIG is None:
-        return 'Please import config.'
+        config()
     if is_running():
         return 'Pylfume is still running.'
     try:
