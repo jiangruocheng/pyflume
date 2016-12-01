@@ -2,7 +2,6 @@
 # -*- coding: utf-8 -*-
 
 import os
-import time
 import signal
 import logging
 import traceback
@@ -23,7 +22,7 @@ PID = Value('i', 0)
 
 def init():
     # 初始化，创建必须目录
-    os.system('mkdir -vp /tmp/pyflume/{config/,logs/,scripts/,tmp/hive}')
+    os.system('bash -c "mkdir -vp /tmp/pyflume/{config/,logs/,scripts/,tmp/hive}"')
 
 
 def reset():
@@ -74,6 +73,7 @@ def init_log():
     level = logging.DEBUG if CONFIG.get('LOG', 'DEBUG') == 'True' else logging.INFO
     logger = logging.getLogger(CONFIG.get('LOG', 'LOG_HANDLER'))
     logger.setLevel(level)
+    logger.handlers = []
     logger.addHandler(handler)
 
 
@@ -125,6 +125,8 @@ def start():
 
 def stop():
     global PID
+    if not is_running():
+        return 'Pylfume is not running.'
     try:
         os.kill(PID.value, signal.SIGTERM)
     except:

@@ -3,8 +3,27 @@
 import os
 import traceback
 import xmlrpclib
+import readline
+import glob
 
 SLAVE_LIST = ['10.0.6.75', '10.0.6.76', '10.0.6.77', '10.0.7.9', '10.0.7.10']
+
+
+def cmd_completer(text, state):
+    CMD = ['help', 'config', 'show', 'upload_script', 'start', 'stop', 'check', 'reset', 'exit']
+    options = [cmd for cmd in CMD if cmd.startswith(text)]
+    if state < len(options):
+        return options[state]
+    else:
+        return None
+
+
+def path_completer(text, state):
+    options = map(lambda f: f + '/' if os.path.isdir(f) else f, glob.glob(text+'*'))
+    if state < len(options):
+        return options[state]
+    else:
+        return None
 
 
 def run(cmd):
@@ -60,6 +79,7 @@ def config():
             ip_list = SLAVE_LIST
         else:
             ip_list = [SLAVE_LIST[int(i)] for i in choose.split()]
+        readline.set_completer(path_completer)
         _path = raw_input('请输入配置文件的地址:')
         for ip in ip_list:
             print 'IP: ', ip, 'is proccessing...'
@@ -67,9 +87,9 @@ def config():
             proxy = xmlrpclib.ServerProxy(address)
             with open(_path, 'r') as f:
                 print 'Result:', str(proxy.config(f.read()))
+            proxy('close')
     except:
         print traceback.format_exc()
-
     print 'Done.'
 
 
@@ -81,6 +101,7 @@ def upload_script():
             ip_list = SLAVE_LIST
         else:
             ip_list = [SLAVE_LIST[int(i)] for i in choose.split()]
+        readline.set_completer(path_completer)
         _path = raw_input('请输入脚本文件的地址:')
         for ip in ip_list:
             print 'IP: ', ip, 'is proccessing...'
@@ -88,6 +109,7 @@ def upload_script():
             proxy = xmlrpclib.ServerProxy(address)
             with open(_path, 'r') as f:
                 print 'Result:', str(proxy.upload_script(os.path.basename(_path), f.read()))
+            proxy('close')
     except:
         print traceback.format_exc()
 
@@ -107,6 +129,7 @@ def start():
             address = "http://{}:12001/".format(ip)
             proxy = xmlrpclib.ServerProxy(address)
             print 'Reuslt:', str(proxy.start())
+            proxy('close')
     except:
         print traceback.format_exc()
 
@@ -126,6 +149,7 @@ def stop():
             address = "http://{}:12001/".format(ip)
             proxy = xmlrpclib.ServerProxy(address)
             print 'Reuslt:', str(proxy.stop())
+            proxy('close')
     except:
         print traceback.format_exc()
 
@@ -139,6 +163,7 @@ def check():
             address = "http://{}:12001/".format(ip)
             proxy = xmlrpclib.ServerProxy(address)
             print 'Reuslt:', str(proxy.is_running())
+            proxy('close')
     except:
         print traceback.format_exc()
 
@@ -158,16 +183,26 @@ def reset():
             address = "http://{}:12001/".format(ip)
             proxy = xmlrpclib.ServerProxy(address)
             print 'Reuslt:', str(proxy.reset())
+            proxy('close')
     except:
         print traceback.format_exc()
 
     print 'Done.'
 
 if __name__ == '__main__':
+
+    if 'libedit' in readline.__doc__:
+        readline.parse_and_bind("bind -e")
+        readline.parse_and_bind("bind '\t' rl_complete")
+    else:
+        readline.parse_and_bind("tab: complete")
+    readline.set_completer_delims(' \t\n`!@#$^&*()=+[{]}\\|;:\'",<>?')
+
     help()
     while True:
-        cmd = raw_input('>>')
-        if run(cmd):
+        readline.set_completer(cmd_completer)
+        cmd = raw_input('>> ')
+        if run(cmd.strip()):
             break
 
     print 'Done.'
