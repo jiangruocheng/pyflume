@@ -111,6 +111,20 @@ def config(content):
     return 'Success'
 
 
+def read_config():
+    # 导入配置文件
+    if not os.path.exists('/tmp/pyflume/config/default.cfg'):
+        return ''
+
+    try:
+        with open('/tmp/pyflume/config/default.cfg', 'r') as f:
+            c = f.read()
+    except:
+        return traceback.format_exc()
+
+    return c
+
+
 def is_running():
     global PID
     if PID.value == 0:
@@ -178,6 +192,7 @@ if __name__ == '__main__':
     server.register_function(stop, "stop")
     server.register_function(upload_script, "upload_script")
     server.register_function(update, "update")
+    server.register_function(read_config, "read_config")
     utils.daemonize()
     while True:
         try:

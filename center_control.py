@@ -10,7 +10,7 @@ SLAVE_LIST = ['10.0.6.75', '10.0.6.76', '10.0.6.77', '10.0.7.9', '10.0.7.10']
 
 
 def cmd_completer(text, state):
-    CMD = ['help', 'config', 'show', 'upload_script', 'start', 'stop', 'check', 'reset', 'exit']
+    CMD = ['help', 'config', 'read_config', 'show', 'upload_script', 'start', 'stop', 'check', 'reset', 'exit', 'update']
     options = [cmd for cmd in CMD if cmd.startswith(text)]
     if state < len(options):
         return options[state]
@@ -35,6 +35,8 @@ def run(cmd):
         show()
     elif 'config' == cmd:
         config()
+    elif 'read_config' == cmd:
+        read_config()
     elif 'upload_script' == cmd:
         upload_script()
     elif 'start' == cmd:
@@ -60,7 +62,9 @@ def help():
     print 'exit: 退出'
     print 'show: 显示所有目标机器ip'
     print 'config: 导入配置文件'
+    print 'read_config: 读取配置文件'
     print 'upload_script: 导入数据处理脚本'
+    print 'update: 更新pyflume'
     print 'start：启动pyflume'
     print 'stop：停止pyflume'
     print 'check：检查各节点pyflume运行状况'
@@ -90,6 +94,21 @@ def config():
             with open(_path, 'r') as f:
                 print 'Result:', str(proxy.config(f.read()))
             proxy('close')
+    except:
+        print traceback.format_exc()
+    print 'Done.'
+
+
+def read_config():
+    show()
+    choose = raw_input('选着需要读取配置的ip的序号:')
+    try:
+        ip = int(choose.split()[0])
+        print 'IP: ', ip, 'is proccessing...'
+        address = "http://{}:12001/".format(ip)
+        proxy = xmlrpclib.ServerProxy(address)
+        print str(proxy.read_config())
+        proxy('close')
     except:
         print traceback.format_exc()
     print 'Done.'
