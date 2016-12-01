@@ -66,9 +66,13 @@ class FileChannel(ChannelBase):
         while event.wait(timeout=0):
             try:
                 data = self.get()
-                func = self.call_backs.get('hive', '')
-                # 此channel目前只支持hive collector
-                func(data)
+                if data:
+                    func = self.call_backs.get('hive', '')
+                    if func:
+                        # 此channel目前只支持hive collector
+                        func(data)
+                    else:
+                        self.log.warning('Cant find hive callback function.')
             except:
                 self.log.warning(traceback.format_exc())
             time.sleep(30)
