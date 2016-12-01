@@ -4,7 +4,6 @@ import os
 import traceback
 import xmlrpclib
 import readline
-import rlcompleter
 import glob
 
 SLAVE_LIST = ['10.0.6.75', '10.0.6.76', '10.0.6.77', '10.0.7.9', '10.0.7.10']

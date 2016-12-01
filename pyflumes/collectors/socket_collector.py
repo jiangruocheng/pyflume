@@ -1,9 +1,8 @@
 #! -*- coding:utf-8 -*-
 
-import time
 import traceback
 
-from socket import socket, error, AF_INET, SOCK_STREAM
+from socket import socket, AF_INET, SOCK_STREAM
 
 from base import Collector
 

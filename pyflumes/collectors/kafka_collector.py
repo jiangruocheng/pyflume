@@ -5,7 +5,7 @@ import traceback
 from kafka import KafkaProducer
 from kafka.errors import KafkaError
 
-from base import Collector, event
+from base import Collector
 
 
 class KafkaCollector(Collector):
