@@ -45,6 +45,8 @@ def run(cmd):
         check()
     elif 'reset' == cmd:
         reset()
+    elif 'update' == cmd:
+        update()
     elif 'exit' == cmd:
         return 1
     else:
@@ -183,6 +185,26 @@ def reset():
             address = "http://{}:12001/".format(ip)
             proxy = xmlrpclib.ServerProxy(address)
             print 'Reuslt:', str(proxy.reset())
+            proxy('close')
+    except:
+        print traceback.format_exc()
+
+    print 'Done.'
+
+
+def update():
+    show()
+    choose = raw_input('选着需要更新的ip的序号，全选输入all:')
+    try:
+        if 'all' == choose:
+            ip_list = SLAVE_LIST
+        else:
+            ip_list = [SLAVE_LIST[int(i)] for i in choose.split()]
+        for ip in ip_list:
+            print 'IP: ', ip, 'is proccessing...'
+            address = "http://{}:12001/".format(ip)
+            proxy = xmlrpclib.ServerProxy(address)
+            print 'Reuslt:', str(proxy.update())
             proxy('close')
     except:
         print traceback.format_exc()
