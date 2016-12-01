@@ -10,7 +10,7 @@ from pyflumes.channels.base import ChannelBase
 class FileChannel(ChannelBase):
     def __init__(self, config, section):
         super(FileChannel, self).__init__(config, section)
-        self.store_dir = config.get(section, 'STORE_DIR')
+        self.store_dir = os.path.join(config.get('GLOBAL', 'DIR'), 'tmp/hive/')
         self.file_max_size = int(config.get(section, 'FILE_MAX_SIZE'))
         self.ignore_postfix = config.get(section, 'IGNORE_POSTFIX')
         self.handlers = dict()

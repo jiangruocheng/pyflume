@@ -53,13 +53,6 @@ def reset():
         except:
             pass
 
-    _dirs = os.listdir('/tmp/pyflume/logs/')
-    for _ in _dirs:
-        try:
-            os.remove('/tmp/pyflume/logs/'+_)
-        except:
-            pass
-
     _dirs = os.listdir('/tmp/pyflume/tmp/hive/')
     for _ in _dirs:
         try:
