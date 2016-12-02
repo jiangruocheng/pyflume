@@ -24,6 +24,9 @@ class SockCollector(Collector):
                 sock.connect((self.server_ip, self.server_port))
                 self.log.debug('Connected to :' + str((self.server_ip, self.server_port)))
                 sock.sendall(_data + '(EOF)')
+                ret = sock.recv(64)
+                if 'success' != ret:
+                    result = 'Fail'
             except:
                 self.log.debug(_data)
                 self.log.error(traceback.format_exc())

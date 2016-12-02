@@ -18,7 +18,7 @@ class FilePollBase(PollBase):
 
     def __init__(self, config, section):
         super(FilePollBase, self).__init__(config, section)
-        self.pickle_File = config.get(section, 'PICKLE_FILE')
+        self.pickle_File = os.path.join(config.get('GLOBAL', 'DIR'), 'tmp/'+'PICKLE_FILE.'+self.name)
         self.pool_path = config.get(section, 'POOL_PATH')
         self.filename_pattern = re.compile(config.get(section, 'FILENAME_PATTERN'))
         self.pickle_handler = None

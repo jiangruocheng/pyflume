@@ -15,7 +15,7 @@ class MemoryChannel(ChannelBase):
     def __init__(self, config, section):
         super(MemoryChannel, self).__init__(config, section)
         self.queue = Queue()
-        self.message_backup = config.get(section, 'MESSAGE_BACKUP')
+        self.message_backup = os.path.join(config.get('GLOBAL', 'DIR'), 'tmp/'+'MESSAGE.BACKUP.'+self.name)
         self.fetch_back_up_data()
 
     def fetch_back_up_data(self):
