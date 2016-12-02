@@ -56,4 +56,5 @@ class ChannelBase(object):
                 continue
             except:
                 self.log.warning(traceback.format_exc())
+        self.release()
         self.log.info(self.name + ' [{}] ends'.format(os.getpid()))
