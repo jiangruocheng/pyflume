@@ -37,12 +37,6 @@ def init():
     # 初始化，创建必须目录
     os.system('bash -c "mkdir -vp /tmp/pyflume/{config/,logs/,scripts/,tmp/hive}"')
 
-    if os.path.exists('/tmp/pyflume/config/default.cfg'):
-        global CONFIG
-        CONFIG = configparser.ConfigParser()
-        CONFIG.read('/tmp/pyflume/config/default.cfg')
-        init_log()
-
 
 def reset():
     # 初始化目录，删除全部数据
