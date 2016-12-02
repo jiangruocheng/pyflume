@@ -103,7 +103,7 @@ def read_config():
     show()
     choose = raw_input('选着需要读取配置的ip的序号:')
     try:
-        ip = int(choose.split()[0])
+        ip = SLAVE_LIST[int(choose.split()[0])]
         print 'IP: ', ip, 'is proccessing...'
         address = "http://{}:12001/".format(ip)
         proxy = xmlrpclib.ServerProxy(address)
