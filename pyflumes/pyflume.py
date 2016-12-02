@@ -82,10 +82,11 @@ class Pyflume(object):
 
 
 def run(config, pid):
-    try:
-        t = Process(target=Pyflume(config).run,
-                    args=(pid,))
-        t.daemon = False
-        t.start()
-    except SystemExit:
-        pass
+
+    t = Process(target=Pyflume(config).run, args=(pid,))
+    t.start()
+
+    # 等待子进程daemonize完成后退出
+    time.sleep(60)
+
+    sys.exit(0)

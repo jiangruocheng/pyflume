@@ -140,7 +140,7 @@ def start():
     try:
         t = Process(target=pyflume.run,
                     args=(CONFIG, PID))
-        t.daemon = False
+        t.daemon = False  # 等待子进程fork完Pyflume.run进程
         t.start()
     except:
         return traceback.format_exc()
