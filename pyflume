@@ -6,6 +6,7 @@ import time
 import traceback
 import threading
 
+from socket import error
 from SimpleXMLRPCServer import SimpleXMLRPCServer
 
 control = __import__('pyflumes.control').control
@@ -33,15 +34,9 @@ def _register(server):
 
 def func():
     global SERVER
-    while True:
-        try:
-            inner_server = SimpleXMLRPCServer(('0.0.0.0', 12002), allow_none=True)
-            inner_server.register_function(lambda : SERVER.shutdown(), 'update')
-            inner_server.serve_forever(None)
-        except:
-            print traceback.format_exc()
-
-        time.sleep(30)
+    inner_server = SimpleXMLRPCServer(('0.0.0.0', 12002), allow_none=True)
+    inner_server.register_function(lambda : SERVER.shutdown(), 'update')
+    inner_server.serve_forever(None)
 
 
 if __name__ == '__main__':
@@ -51,8 +46,14 @@ if __name__ == '__main__':
     t.start()
 
     while not EXIT_FLAG:
-        SERVER = SimpleXMLRPCServer(("0.0.0.0", 12001))
+        try:
+            SERVER = SimpleXMLRPCServer(("0.0.0.0", 12001))
+        except error:
+            print traceback.format_exc()
+            break
         _register(SERVER)
         SERVER.serve_forever()
         SERVER.server_close()
         _reimport()
+
+    sys.exit(0)
