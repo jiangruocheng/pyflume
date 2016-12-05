@@ -36,8 +36,7 @@ def func():
     while True:
         try:
             inner_server = SimpleXMLRPCServer(('0.0.0.0', 12002), allow_none=True)
-            inner_server.register_function(lambda : SERVER.shutdown() and SERVER.server_close(),
-                                           'update')
+            inner_server.register_function(lambda : SERVER.shutdown(), 'update')
             inner_server.serve_forever(None)
         except:
             print traceback.format_exc()
@@ -46,7 +45,7 @@ def func():
 
 
 if __name__ == '__main__':
-    # utils.daemonize()
+    utils.daemonize()
 
     t = threading.Thread(target=func)
     t.start()
