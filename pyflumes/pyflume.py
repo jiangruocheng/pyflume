@@ -38,7 +38,6 @@ class Pyflume(object):
         for _pid in self.pids:
             try:
                 os.kill(_pid, signal.SIGTERM)
-                time.sleep(2)
             except:
                 pass
 
@@ -66,7 +65,7 @@ class Pyflume(object):
 
         flag = True
         while flag:
-            time.sleep(30)
+            time.sleep(15)
             for _p in self.processes:
                 if not _p.is_alive():
                     self.log.warning(_p.name + ' is not alive.')
@@ -82,10 +81,11 @@ class Pyflume(object):
 
 
 def run(config, pid):
-    try:
-        t = Process(target=Pyflume(config).run,
-                    args=(pid,))
-        t.daemon = False
-        t.start()
-    except SystemExit:
-        pass
+
+    t = Process(target=Pyflume(config).run, args=(pid,))
+    t.start()
+
+    # 等待子进程daemonize完成后退出
+    time.sleep(30)
+
+    sys.exit(0)

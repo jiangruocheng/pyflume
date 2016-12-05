@@ -2,6 +2,7 @@
 
 import os
 import time
+import signal
 import logging
 import traceback
 
@@ -26,7 +27,9 @@ class ChannelBase(object):
     def handout(self, event):
         self.log.info(self.name + ' [{}] starts'.format(os.getpid()))
 
-        while event.wait(timeout=0):
+        signal.signal(signal.SIGTERM, lambda *args, **kwargs: self.log.info(self.name+': got terminate sig.'))
+
+        while event.is_set():
             try:
                 data = self.get(timeout=30)
                 c_names = data.get('collectors', '').split(',')
@@ -56,4 +59,5 @@ class ChannelBase(object):
                 continue
             except:
                 self.log.warning(traceback.format_exc())
+        self.release()
         self.log.info(self.name + ' [{}] ends'.format(os.getpid()))

@@ -2,6 +2,7 @@
 
 import os
 import time
+import signal
 import traceback
 
 from pyflumes.channels.base import ChannelBase
@@ -63,7 +64,9 @@ class FileChannel(ChannelBase):
     def handout(self, event):
         self.log.info(self.name + ' [{}] starts'.format(os.getpid()))
 
-        while event.wait(timeout=0):
+        signal.signal(signal.SIGTERM, lambda *args, **kwargs: self.log.info(self.name+': got terminate sig.'))
+
+        while event.is_set():
             try:
                 data = self.get()
                 if data:

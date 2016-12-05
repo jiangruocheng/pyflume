@@ -37,7 +37,7 @@ class MemoryChannel(ChannelBase):
                 data['id'] = str(uuid.uuid4())
         self.queue.put(data, timeout=timeout)
 
-    def __del__(self):
+    def release(self):
         _list = list()
         while True:
             try:
