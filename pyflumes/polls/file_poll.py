@@ -105,6 +105,8 @@ class FilePollBase(PollBase):
         for _in_process_file_handler in self.handlers:
             self.monitor_dict[_in_process_file_handler.name] = _in_process_file_handler
             file_size = os.path.getsize(_in_process_file_handler.name)
+            # 当文件大小超过进程文件描述符最大偏移量时，超出部分的文件内容也应该被发送到channel里
+            # 但此时不会触发epoll或者kq的文件可读事件，所以应该在这里做一些处理
             while _in_process_file_handler.tell() < file_size:
                 _data = self._get_log_data_by_handler(_in_process_file_handler)
                 if not _data:
