@@ -41,7 +41,7 @@ class SocketPoll(PollBase):
         sock.listen(int(self.max_clients))
 
         self.channel = chn(channel_name=self.channel_name)
-        while event.wait(timeout=0):
+        while event.is_set():
 
             try:
                 connection, client_address = sock.accept()

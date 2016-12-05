@@ -63,7 +63,7 @@ class FileChannel(ChannelBase):
     def handout(self, event):
         self.log.info(self.name + ' [{}] starts'.format(os.getpid()))
 
-        while event.wait(timeout=0):
+        while event.is_set():
             try:
                 data = self.get()
                 if data:

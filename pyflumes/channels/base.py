@@ -26,7 +26,7 @@ class ChannelBase(object):
     def handout(self, event):
         self.log.info(self.name + ' [{}] starts'.format(os.getpid()))
 
-        while event.wait(timeout=0):
+        while event.is_set():
             try:
                 data = self.get(timeout=30)
                 c_names = data.get('collectors', '').split(',')
