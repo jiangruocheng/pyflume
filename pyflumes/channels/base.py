@@ -2,6 +2,7 @@
 
 import os
 import time
+import signal
 import logging
 import traceback
 
@@ -25,6 +26,8 @@ class ChannelBase(object):
 
     def handout(self, event):
         self.log.info(self.name + ' [{}] starts'.format(os.getpid()))
+
+        signal.signal(signal.SIGTERM, lambda *args, **kwargs: self.log.info(self.name+': got terminate sig.'))
 
         while event.is_set():
             try:
