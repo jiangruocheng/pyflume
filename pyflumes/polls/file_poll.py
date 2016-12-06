@@ -196,7 +196,6 @@ if platform.system() == 'Linux':
                                 raise e
                 except Exception:
                     self.log.error(traceback.format_exc())
-                    exit(-1)
                 finally:
                     self.clean_handlers()
                     _epoll.close()
