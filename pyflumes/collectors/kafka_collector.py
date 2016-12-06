@@ -12,7 +12,7 @@ class KafkaCollector(Collector):
     def __init__(self, config, section):
         super(KafkaCollector, self).__init__(config, section)
         self.log.debug(config.get(section, 'SERVER'))
-        self.kfk_server = self.config.get(self.section, 'SERVER')
+        self.kfk_server = config.get(section, 'SERVER')
         self.topic = config.get(section, 'TOPIC')
 
     def process_data(self, msg):
