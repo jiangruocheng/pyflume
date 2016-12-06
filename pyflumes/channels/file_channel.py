@@ -54,10 +54,7 @@ class FileChannel(ChannelBase):
         if not file_name:
             return None
 
-        f = self.handlers.get(file_name, '')
-        if not f:
-            f = open(os.path.join(self.store_dir, file_name), 'a')
-            self.handlers[file_name] = f
+        f = open(os.path.join(self.store_dir, file_name), 'a')
         f.write(data.get('data'))
         f.flush()
 
