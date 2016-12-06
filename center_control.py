@@ -7,6 +7,7 @@ import readline
 import glob
 
 SLAVE_LIST = ['10.0.6.75', '10.0.6.76', '10.0.6.77', '10.0.7.9', '10.0.7.10']
+# SLAVE_LIST = ['127.0.0.1']
 
 
 def cmd_completer(text, state):
