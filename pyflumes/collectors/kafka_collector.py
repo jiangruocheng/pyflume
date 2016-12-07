@@ -35,5 +35,3 @@ class KafkaCollector(Collector):
 
         # return record_metadata.topic, record_metadata.partition, record_metadata.offset
         return result,
-
-
